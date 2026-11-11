@@ -21,6 +21,7 @@ const HEADINGS: [RegExp, FieldKey][] = [
   [/objections?$/, "product.objections"],
   [/pricing|promotions?|offers?$|discounts?$/, "product.pricing"],
   [/restrictions?|compliance|do not say|don'?ts$/, "restrictions"],
+  [/^(product )?(links?|urls?|pages?)$|^product (page|url)s?$/, "product.links"],
   [/(research )?notes$/, "researchNotes"],
 ];
 

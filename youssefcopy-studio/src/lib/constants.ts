@@ -63,8 +63,9 @@ export const CONTENT_ORIGIN_LABELS: Record<string, string> = {
   empty: "Empty",
   manual: "Human-written",
   template: "From template",
-  ai: "AI draft",
-  ai_edited: "AI draft · human-edited",
+  guided: "Guided · rule-based assist",
+  ai: "AI-assisted draft",
+  ai_edited: "AI-assisted · human-edited",
   restored: "Restored version",
   approved: "Approved snapshot",
 };

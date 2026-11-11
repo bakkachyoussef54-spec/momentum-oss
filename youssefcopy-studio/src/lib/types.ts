@@ -15,6 +15,7 @@ export interface ProductProfile {
   testimonials: string;
   objections: string;
   pricing: string;
+  links: string;
 }
 
 export interface BrandProfile {
@@ -51,4 +52,5 @@ export const EMPTY_PRODUCT: ProductProfile = {
   testimonials: "",
   objections: "",
   pricing: "",
+  links: "",
 };

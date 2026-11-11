@@ -122,6 +122,10 @@ export const briefEmailSchema = z.object({
   keyPoints: z.array(z.string()),
   focusProblem: z.string(),
   focusPromise: z.string(),
+  // Added in V2; defaults keep briefs stored by V1 readable.
+  mainMessage: z.string().default(""),
+  ctaStrategy: z.string().default(""),
+  supportingResearch: z.array(z.string()).default([]),
 });
 
 export const campaignBriefSchema = z.object({
@@ -184,6 +188,9 @@ export function buildCampaignBrief(input: {
       keyPoints: r.keyPoints,
       focusProblem,
       focusPromise,
+      mainMessage: mainMessageFor(r.intent, productName, focusProblem, focusPromise, psych.proofAvailable),
+      ctaStrategy: CTA_STRATEGIES[r.intent],
+      supportingResearch: supportingResearchFor(r.intent, input.brand, input.research),
     };
   });
 

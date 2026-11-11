@@ -94,8 +94,8 @@ export async function deleteCampaignAction(id: string, confirmName: string) {
 }
 
 // Emails
-export async function saveDraftAction(emailId: string, content: unknown, meta?: unknown) {
-  return run(async () => (await emails.saveDraft(emailId, content, meta)).updatedAt.toISOString());
+export async function saveDraftAction(emailId: string, content: unknown, meta?: unknown, assisted = false) {
+  return run(async () => (await emails.saveDraft(emailId, content, meta, { assisted })).updatedAt.toISOString());
 }
 export async function createVersionAction(emailId: string, label: string) {
   return run(async () => (await emails.createVersion(emailId, label)).versionNumber, ["/editor"]);

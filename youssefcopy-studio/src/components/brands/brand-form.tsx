@@ -21,7 +21,7 @@ export const EMPTY_BRAND: BrandInput = {
   competitors: "",
   restrictions: "",
   researchNotes: "",
-  product: { name: "", category: "", description: "", targetAudience: "", painPoints: "", desires: "", features: "", benefits: "", usp: "", testimonials: "", objections: "", pricing: "" },
+  product: { name: "", category: "", description: "", targetAudience: "", painPoints: "", desires: "", features: "", benefits: "", usp: "", testimonials: "", objections: "", pricing: "", links: "" },
 };
 
 type ProductKey = keyof BrandInput["product"];
@@ -40,6 +40,7 @@ const PRODUCT_FIELDS: { key: ProductKey; label: string; hint?: string; multiline
   { key: "testimonials", label: "Testimonials or reviews", hint: "Paste real, attributable reviews only. Add the source in Research and mark it verified.", multiline: true },
   { key: "objections", label: "Purchase objections", hint: "One per line", multiline: true },
   { key: "pricing", label: "Pricing & promotional details", hint: "Exact prices, offers and end dates approved by the client. Leave blank if none.", multiline: true, rows: 2 },
+  { key: "links", label: "Product links", hint: "Product page URLs, one per line. Used as references only — never scraped.", multiline: true, rows: 2 },
 ];
 
 export function BrandForm({ brandId, initial }: { brandId?: string; initial: BrandInput }) {
