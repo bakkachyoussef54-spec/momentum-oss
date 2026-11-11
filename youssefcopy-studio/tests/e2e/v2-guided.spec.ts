@@ -87,6 +87,7 @@ test("V2: brand → research → one-click plan → guided writing ×3 → revie
   // Persistence after reload
   await page.reload();
   await expect(page.getByTestId("guided-writer").or(page.getByLabel("Opening hook"))).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Address the most important customer objection");
 
   // Review + export
   await page.goto(`/delivery?campaign=${campaignId}`);

@@ -95,11 +95,12 @@ export const emailContentSchema = z.object({
 });
 export type EmailContent = z.infer<typeof emailContentSchema>;
 
+// No defaults: omitted fields must stay untouched on update (defaults would blank them).
 export const emailMetaSchema = z.object({
-  objective: text(1000).default(""),
-  segment: text(500).default(""),
-  role: text(500).default(""),
-  framework: text(50).default(""),
+  objective: text(1000).optional(),
+  segment: text(500).optional(),
+  role: text(500).optional(),
+  framework: text(50).optional(),
 });
 
 /** Turn a ZodError into a short, user-safe message. */

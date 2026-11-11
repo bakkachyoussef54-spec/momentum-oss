@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { addResearch, createBrand } from "@/lib/services/brands";
 import { getCampaign, parseBrief, planCampaignFromBrand } from "@/lib/services/campaigns";
-import { getEmail, saveDraft, setEmailStatus, createVersion, restoreVersion } from "@/lib/services/emails";
+import { ensureEmailMeta, getEmail, saveDraft, setEmailStatus, createVersion, restoreVersion } from "@/lib/services/emails";
 import { buildClientPackage } from "@/lib/services/export";
 import { getWorkflow } from "@/lib/services/workflow";
 import { exportBackup, importBackup } from "@/lib/services/backup";
@@ -89,6 +89,26 @@ describe("V2 three-email workflow without an API key", () => {
     await saveDraft(first, { ...emailContentOf((await getEmail(first))!), sections: { problem: "changed", benefit: "", transition: "" }, body: "changed" });
     await restoreVersion(first, v.id);
     expect(emailContentOf((await getEmail(first))!).sections.problem).not.toBe("changed");
+  });
+
+  it("autosave with partial meta keeps the email's role and framework (regression)", async () => {
+    const e = await db.campaignEmail.findFirstOrThrow({ where: { role: { not: "" } } });
+    await saveDraft(e.id, { ...emailContentOf(e), body: "Autosaved body" }, { objective: "New objective", segment: "New segment" });
+    const after = (await getEmail(e.id))!;
+    expect(after.role).toBe(e.role);
+    expect(after.framework).toBe(e.framework);
+    expect(after.objective).toBe("New objective");
+  });
+
+  it("repairs emails whose role/framework were blanked, without touching filled fields", async () => {
+    const e = await db.campaignEmail.findFirstOrThrow({ where: { role: { not: "" } } });
+    await db.campaignEmail.update({ where: { id: e.id }, data: { role: "", framework: "" } });
+    expect(await ensureEmailMeta(e.campaignId)).toBe(1);
+    const after = (await getEmail(e.id))!;
+    expect(after.role).toBe(e.role);
+    expect(after.framework).toBe(e.framework);
+    expect(after.objective).toBe("New objective");
+    expect(await ensureEmailMeta(e.campaignId)).toBe(0);
   });
 
   it("AI generation stays optional and clearly refused without credentials", async () => {

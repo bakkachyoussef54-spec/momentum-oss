@@ -1,12 +1,40 @@
 import { analyzeEmail, type AnalysisResult } from "../analyzer";
 import { db } from "../db";
-import { parseStringArray } from "../json";
+import { parseJson, parseStringArray } from "../json";
+import { campaignBriefSchema } from "../strategy/playbooks";
 import { applyTemplate as fillTemplate } from "../templates/library";
 import { emailContentSchema, emailMetaSchema, emailStatusSchema, type EmailContent } from "../validation";
 import { emailContentOf, toBrandProfile, toResearchItem } from "./mappers";
 import { logActivity } from "./settings";
 
 type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Refill empty plan fields (role, framework, objective, segment) from the campaign brief.
+ * Repairs emails affected by an earlier autosave bug; never overwrites non-empty values.
+ */
+export async function ensureEmailMeta(campaignId: string) {
+  const c = await db.campaign.findUnique({ where: { id: campaignId }, include: { emails: true } });
+  if (!c) return 0;
+  const brief = parseJson(c.brief, campaignBriefSchema, null);
+  if (!brief) return 0;
+  let repaired = 0;
+  for (const e of c.emails) {
+    const plan = brief.emails.find((b) => b.position === e.position);
+    if (!plan) continue;
+    const data: Record<string, string> = {};
+    if (!e.role.trim()) data.role = plan.role;
+    if (!e.framework.trim()) data.framework = plan.framework;
+    if (!e.objective.trim()) data.objective = plan.objective;
+    if (!e.segment.trim()) data.segment = plan.segment;
+    if (Object.keys(data).length) {
+      // updatedAt is kept so the repair doesn't mark exports as stale.
+      await db.campaignEmail.update({ where: { id: e.id }, data: { ...data, updatedAt: e.updatedAt } });
+      repaired++;
+    }
+  }
+  return repaired;
+}
 
 export async function getEmail(id: string) {
   return db.campaignEmail.findUnique({
