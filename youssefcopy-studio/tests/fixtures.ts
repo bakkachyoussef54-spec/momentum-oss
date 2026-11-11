@@ -22,6 +22,7 @@ export function sleepMaskBrand(overrides: Partial<BrandProfile["product"]> = {})
       testimonials: "",
       objections: "Masks feel uncomfortable\nIt will slip off",
       pricing: "$34. Free returns within 30 days.",
+      links: "https://example.com/mask",
       ...overrides,
     },
   };

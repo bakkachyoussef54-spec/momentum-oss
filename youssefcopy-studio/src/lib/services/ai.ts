@@ -48,12 +48,12 @@ export async function generateEmailDraft(emailId: string, signal?: AbortSignal) 
   await replaceContent(
     emailId,
     { subjectLines: d.subjectLines.slice(0, 3), selectedSubject: 0, previewText: d.previewText, hook: d.hook, body: d.body, cta: d.cta, rationale: d.rationale, researchRefs: d.researchRefs },
-    { origin: "ai", label: `AI first draft (${result.model})`, aiModel: result.model, meta: { objective: d.objective || email.objective, segment: d.segment || email.segment } },
+    { origin: "ai", label: `AI-assisted first draft (${result.model})`, aiModel: result.model, meta: { objective: d.objective || email.objective, segment: d.segment || email.segment } },
   );
   const usage: UsageInfo = { model: result.model, ...result.usage, estimatedCostUsd: estimateCost(config, result.usage) };
   await logActivity({
     type: "ai.generated",
-    message: `AI drafted email ${email.position} of ${campaign.name} with ${result.model}${usage.inputTokens !== null ? ` (${usage.inputTokens}+${usage.outputTokens} tokens)` : ""}`,
+    message: `AI-assisted draft for email ${email.position} of ${campaign.name} with ${result.model}${usage.inputTokens !== null ? ` (${usage.inputTokens}+${usage.outputTokens} tokens)` : ""}`,
     entityType: "email",
     entityId: emailId,
     brandId: campaign.brandId,

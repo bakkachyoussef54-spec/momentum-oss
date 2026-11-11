@@ -9,7 +9,7 @@ import * as emails from "@/lib/services/emails";
 import * as templates from "@/lib/services/templates";
 import * as demo from "@/lib/services/demo";
 import { setSetting, logActivity } from "@/lib/services/settings";
-import { LIMITS } from "@/lib/constants";
+import { CAMPAIGN_TYPES, LIMITS, type CampaignType } from "@/lib/constants";
 
 export type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -80,6 +80,12 @@ export async function importResearchDocumentAction(input: { brandId: string; fil
 export async function createCampaignAction(input: CampaignInput) {
   return run(async () => (await campaigns.createCampaign(input)).id, ["/"]);
 }
+export async function planCampaignAction(brandId: string, type: string = "welcome") {
+  return run(async () => {
+    const parsed = CAMPAIGN_TYPES.includes(type as CampaignType) ? (type as CampaignType) : "welcome";
+    return (await campaigns.planCampaignFromBrand(brandId, parsed)).id;
+  }, ["/"]);
+}
 export async function refreshBriefAction(id: string) {
   return run(() => campaigns.refreshBrief(id).then(() => null), ["/"]);
 }
@@ -94,8 +100,8 @@ export async function deleteCampaignAction(id: string, confirmName: string) {
 }
 
 // Emails
-export async function saveDraftAction(emailId: string, content: unknown, meta?: unknown) {
-  return run(async () => (await emails.saveDraft(emailId, content, meta)).updatedAt.toISOString());
+export async function saveDraftAction(emailId: string, content: unknown, meta?: unknown, assisted = false) {
+  return run(async () => (await emails.saveDraft(emailId, content, meta, { assisted })).updatedAt.toISOString());
 }
 export async function createVersionAction(emailId: string, label: string) {
   return run(async () => (await emails.createVersion(emailId, label)).versionNumber, ["/editor"]);

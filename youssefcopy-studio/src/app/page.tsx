@@ -3,9 +3,18 @@ import Link from "next/link";
 import { ButtonLink, DemoBadge, EmptyState, PageHeader, SectionCard, StatusBadge, timeAgo } from "@/components/common";
 import { CAMPAIGN_TYPE_LABELS, type CampaignType } from "@/lib/constants";
 import { getDashboardData } from "@/lib/services/dashboard";
+import { getWorkflow } from "@/lib/services/workflow";
+import { WorkflowBar } from "@/components/workflow/workflow-bar";
+import { QueryPicker } from "@/components/query-picker";
+import { PlanCampaignButton } from "@/components/campaigns/plan-campaign-button";
+import { db } from "@/lib/db";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ campaign?: string }> }) {
+  const { campaign: campaignParam } = await searchParams;
   const d = await getDashboardData();
+  const latestBrand = d.recentCampaigns.length ? null : await db.brand.findFirst({ where: { archivedAt: null }, orderBy: { updatedAt: "desc" }, select: { id: true } });
+  const workflow = await getWorkflow({ campaignId: campaignParam ?? d.recentCampaigns[0]?.id ?? null, brandId: latestBrand?.id ?? null });
+  const nextStep = workflow.steps.find((s) => s.status !== "complete");
   const stats = [
     { label: "Total Brands", value: d.totalBrands, icon: Building2, href: "/brands" },
     { label: "Active Campaigns", value: d.activeCampaigns, icon: Layers, href: "/campaigns" },
@@ -26,6 +35,34 @@ export default async function DashboardPage() {
           </ButtonLink>
         }
       />
+
+      <section className="mb-8 space-y-3" aria-label="Guided workflow">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg">{workflow.campaignName ?? workflow.brandName ?? "Start your first client campaign"}</h2>
+            <p className="text-sm text-muted-foreground">
+              {nextStep ? (
+                <>
+                  Next: <span className="font-medium text-foreground">{nextStep.label}</span> — {nextStep.detail}
+                </>
+              ) : (
+                "Every step is complete. The client package is exported and up to date."
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            {d.recentCampaigns.length > 1 && (
+              <QueryPicker param="campaign" label="Campaign" value={workflow.campaignId ?? ""} placeholder="Most recent" options={d.recentCampaigns.map((c) => ({ value: c.id, label: `${c.brand.name} — ${c.name}` }))} />
+            )}
+            {nextStep?.key === "campaign" && workflow.brandId ? (
+              <PlanCampaignButton brandId={workflow.brandId} showType={false} />
+            ) : (
+              nextStep && <ButtonLink href={nextStep.href} variant="outline">Continue: {nextStep.label}</ButtonLink>
+            )}
+          </div>
+        </div>
+        <WorkflowBar steps={workflow.steps} />
+      </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (

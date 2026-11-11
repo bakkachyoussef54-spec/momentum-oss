@@ -25,6 +25,8 @@ describe("end-to-end service workflow (sleep-mask welcome series)", () => {
   let emailIds: string[] = [];
 
   beforeAll(async () => {
+    // Integration files share test.db and run in any order; this suite asserts absolute counts.
+    await db.brand.deleteMany();
     const b = await createBrand(brandInput);
     brandId = b.id;
   });
@@ -85,7 +87,8 @@ describe("end-to-end service workflow (sleep-mask welcome series)", () => {
 
   it("8. stores an explainable quality analysis", async () => {
     const r = await analyzeAndStore(emailIds[0]);
-    expect(r.breakdown).toHaveLength(7);
+    expect(r.breakdown).toHaveLength(8);
+    expect(r.weaknesses.every((w) => w.title && w.suggestion)).toBe(true);
     expect(r.improvements).toHaveLength(3);
     expect(await db.copywritingAnalysis.count({ where: { emailId: emailIds[0] } })).toBe(1);
   });

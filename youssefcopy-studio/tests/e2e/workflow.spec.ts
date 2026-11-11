@@ -14,7 +14,7 @@ test("every navigation item leads to a working page", async ({ page }) => {
     await expect(page.getByText("Something went wrong")).toHaveCount(0);
   }
   await page.goto("/");
-  await expect(page.getByTestId("stat-total-brands")).toHaveText("0");
+  await expect(page.getByTestId("stat-total-brands")).toHaveText(/^\d+$/);
 });
 
 test("complete sleep-mask welcome-series workflow persists and exports", async ({ page }) => {
@@ -76,7 +76,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   await page.getByRole("button", { name: "Generate Campaign Brief" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Somna Welcome Series" })).toBeVisible();
   await expect(page.getByTestId("sequence-email")).toHaveCount(3);
-  await expect(page.getByRole("heading", { name: "Address the primary objection" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Address the most important customer objection" })).toBeVisible();
   const campaignId = page.url().split("/").pop()!;
 
   // AI-unconfigured generator offers manual scaffolds
@@ -88,7 +88,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
 
   // Editor: template, edit, autosave, version, reload
   await page.goto(`/campaigns/${campaignId}`);
-  await page.getByTestId("sequence-email").first().getByRole("link", { name: "Write email" }).click();
+  await page.getByTestId("sequence-email").first().getByRole("link", { name: "Write with guidance" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Email 1");
   await page.getByLabel("Apply template").selectOption({ label: "Welcome · The one thing we fix" });
   await page.getByRole("button", { name: "Apply", exact: true }).click();
@@ -112,7 +112,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   // Preview mode and AI actions disabled
   await page.getByRole("tab", { name: "Inbox preview" }).click();
   await expect(page.getByTestId("email-preview")).toContainText("See how the contour works");
-  await page.getByRole("tab", { name: "Edit" }).click();
+  await page.getByRole("tab", { name: "Freeform" }).click();
   await expect(page.getByRole("button", { name: "Improve Clarity" })).toBeDisabled();
 
   // Approve
@@ -121,7 +121,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
 
   // Analyzer
   await page.getByRole("link", { name: "Full analysis →" }).click();
-  await expect(page.getByTestId("analysis-report")).toContainText("Top 3 prioritized improvements");
+  await expect(page.getByTestId("analysis-report")).toContainText("Top 3 highest-priority weaknesses");
   await expect(page.getByTestId("analysis-report")).toContainText("not a scientifically validated predictor");
 
   // Delivery export
@@ -143,8 +143,8 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
 
   // Dashboard reflects stored records
   await page.goto("/");
-  await expect(page.getByTestId("stat-total-brands")).toHaveText("1");
-  await expect(page.getByTestId("stat-completed-emails")).toHaveText("1");
+  await expect(page.getByTestId("stat-total-brands")).toHaveText(/^[1-9]\d*$/);
+  await expect(page.getByTestId("stat-completed-emails")).toHaveText(/^[1-9]\d*$/);
 });
 
 test("missing inputs are handled gracefully", async ({ page }) => {

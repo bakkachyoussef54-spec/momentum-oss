@@ -28,9 +28,9 @@ interface RoleDefinition {
 
 const PLAYBOOKS: Record<CampaignType, RoleDefinition[]> = {
   welcome: [
-    { role: "Introduce the product and central benefit", intent: "introduce", objective: "Make a strong first impression and connect the product to the reader's main problem.", segment: "New subscribers who have not purchased", timing: "Immediately after sign-up", keyPoints: ["Welcome warmly", "Name the primary problem", "Introduce the central benefit", "Single CTA to explore the product"] },
-    { role: "Address the primary objection", intent: "objection", objective: "Remove the biggest reason the reader hesitates to buy.", segment: "New subscribers who opened email 1 but did not purchase", timing: "Day 2", keyPoints: ["State the objection honestly", "Answer with verified facts", "Reassure (returns, guarantee) only if documented"] },
-    { role: "Reinforce trust and guide toward purchase", intent: "trust", objective: "Build confidence with verified proof and invite a clear next step.", segment: "New subscribers who have not purchased", timing: "Day 4", keyPoints: ["Use verified reviews only", "Recap the core promise", "Clear purchase CTA"] },
+    { role: "Introduce the product and its primary benefit", intent: "introduce", objective: "Make a strong first impression and connect the product to the reader's main problem.", segment: "New subscribers who have not purchased", timing: "Immediately after sign-up", keyPoints: ["Welcome warmly", "Name the primary problem", "Introduce the central benefit", "Single CTA to explore the product"] },
+    { role: "Address the most important customer objection", intent: "objection", objective: "Remove the biggest reason the reader hesitates to buy.", segment: "New subscribers who opened email 1 but did not purchase", timing: "Day 2", keyPoints: ["State the objection honestly", "Answer with verified facts", "Reassure (returns, guarantee) only if documented"] },
+    { role: "Reinforce the value and guide the purchase decision", intent: "trust", objective: "Reinforce the value with verified evidence and make the purchase decision easy.", segment: "New subscribers who have not purchased", timing: "Day 4", keyPoints: ["Use verified reviews only", "Recap the core promise", "Clear purchase CTA"] },
     { role: "Show the after-state", intent: "transformation", objective: "Help the reader picture life with the problem solved.", segment: "Engaged non-buyers", timing: "Day 6", keyPoints: ["Before/after contrast", "Keep it believable"] },
     { role: "Educate on getting the most from the product", intent: "educate", objective: "Give genuinely useful guidance related to the product category.", segment: "All new subscribers", timing: "Day 8", keyPoints: ["One practical tip", "Soft CTA"] },
   ],
@@ -122,6 +122,10 @@ export const briefEmailSchema = z.object({
   keyPoints: z.array(z.string()),
   focusProblem: z.string(),
   focusPromise: z.string(),
+  // Added in V2; defaults keep briefs stored by V1 readable.
+  mainMessage: z.string().default(""),
+  ctaStrategy: z.string().default(""),
+  supportingResearch: z.array(z.string()).default([]),
 });
 
 export const campaignBriefSchema = z.object({
@@ -143,6 +147,106 @@ export function rolesFor(type: CampaignType, count: number): RoleDefinition[] {
   const roles: RoleDefinition[] = [];
   for (let i = 0; i < count; i++) roles.push(base[i] ?? EXTRA_ROLES[(i - base.length) % EXTRA_ROLES.length]);
   return roles;
+}
+
+export const CTA_STRATEGIES: Record<EmailIntent, string> = {
+  introduce: "Low-commitment CTA that invites the reader to see how the product works (product page), not a hard sell.",
+  objection: "Reassurance CTA that follows directly from the answer to the objection, e.g. checking fit or details on the product page.",
+  trust: "Direct purchase CTA to the product page; mention guarantees or returns only if they are documented in the brief.",
+  transformation: "Benefit-led CTA that points to the product page and echoes the after-state.",
+  educate: "Soft CTA to useful content or the product page; no pressure.",
+  offer: "Clear offer CTA using the client's approved terms and real dates only.",
+  reminder: "Return-to-cart CTA with a calm tone and no invented scarcity.",
+  thank: "Utility CTA such as tracking the order or reading the setup guide.",
+  care: "Helpful CTA to care or usage guidance.",
+  next_action: "One relevant next step: leave a review, refer a friend, or view a complementary product.",
+  reconnect: "Soft re-engagement CTA that makes it easy to stay or leave.",
+};
+
+function lcFirst(s: string) {
+  return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+}
+
+/** One-sentence main message per email, assembled only from the brief. */
+export function mainMessageFor(intent: EmailIntent, product: string, problem: string, promise: string, proofAvailable: boolean): string {
+  const p = lcFirst(promise.replace(/[.!]+$/, ""));
+  const prob = problem.replace(/[.!?]+$/, "");
+  switch (intent) {
+    case "introduce":
+      return `${product} is built for people dealing with ${lcFirst(prob)} — its primary benefit: ${p}.`;
+    case "objection":
+      return `The concern “${prob}” has a factual answer: ${p}.`;
+    case "trust":
+      return `Reinforce why ${product} is worth it — ${p}${proofAvailable ? " — backed by verified customer feedback" : ""} — and make the decision easy.`;
+    case "transformation":
+      return `Picture the after-state: ${p}.`;
+    case "offer":
+      return `An approved offer makes this a good time to try ${product}: ${p}.`;
+    case "reminder":
+      return `${product} is still waiting, and the reason it was chosen still stands: ${p}.`;
+    case "thank":
+      return `Thank the customer and set clear expectations for delivery and first use of ${product}.`;
+    case "care":
+      return `Help the customer use ${product} correctly so they get the promised benefit: ${p}.`;
+    case "next_action":
+      return "Add value after purchase and suggest one relevant next step.";
+    case "reconnect":
+      return `Re-open the conversation by reminding the reader why they joined: ${p}.`;
+    case "educate":
+      return `Teach one useful idea about ${lcFirst(prob)}, with ${product} as one helpful option.`;
+  }
+}
+
+const RESEARCH_FOR_INTENT: Record<EmailIntent, string[]> = {
+  introduce: ["benefit", "general"],
+  objection: ["objection", "pricing", "benefit"],
+  trust: ["testimonial", "benefit", "claim"],
+  transformation: ["desire", "benefit"],
+  educate: ["general", "benefit"],
+  offer: ["pricing", "benefit"],
+  reminder: ["benefit", "pricing"],
+  thank: ["general", "pricing"],
+  care: ["general", "benefit"],
+  next_action: ["general", "testimonial"],
+  reconnect: ["benefit", "desire"],
+};
+
+const PROFILE_FOR_INTENT: Record<EmailIntent, (keyof BrandProfile["product"])[]> = {
+  introduce: ["benefits", "painPoints", "usp"],
+  objection: ["objections", "benefits", "pricing"],
+  trust: ["testimonials", "benefits", "usp"],
+  transformation: ["desires", "benefits"],
+  educate: ["painPoints", "features"],
+  offer: ["pricing", "benefits"],
+  reminder: ["benefits", "pricing"],
+  thank: ["description"],
+  care: ["features", "benefits"],
+  next_action: ["benefits"],
+  reconnect: ["benefits", "desires"],
+};
+
+const PROFILE_LABELS: Record<string, string> = {
+  benefits: "benefits",
+  painPoints: "pain points",
+  usp: "USP",
+  objections: "objections",
+  pricing: "pricing",
+  testimonials: "testimonials",
+  desires: "desires",
+  features: "features",
+  description: "description",
+};
+
+/** Verified research titles plus filled profile fields relevant to the email's intent. */
+export function supportingResearchFor(intent: EmailIntent, brand: BrandProfile, research: ResearchItem[]): string[] {
+  const cats = RESEARCH_FOR_INTENT[intent];
+  const fromResearch = research
+    .filter((r) => r.status === "verified" && cats.includes(r.category))
+    .sort((a, b) => cats.indexOf(a.category) - cats.indexOf(b.category))
+    .slice(0, 4)
+    .map((r) => r.title);
+  const fromProfile = PROFILE_FOR_INTENT[intent].filter((k) => brand.product[k].trim()).map((k) => `Profile: ${PROFILE_LABELS[k] ?? k}`);
+  return [...fromResearch, ...fromProfile];
 }
 
 /**
@@ -170,7 +274,7 @@ export function buildCampaignBrief(input: {
   const emails: BriefEmail[] = roles.map((r, i) => {
     const framework = selectFramework(r.intent, { proofAvailable: psych.proofAvailable, hasPricing });
     const focusProblem =
-      r.intent === "objection" ? pick(psych.objections, i, "[Add a purchase objection to the brand profile]") : pick(psych.painPoints, i, "[Add a customer pain point]");
+      r.intent === "objection" ? pick(psych.objections, roles.slice(0, i).filter((x) => x.intent === "objection").length, "[Add a purchase objection to the brand profile]") : pick(psych.painPoints, i, "[Add a customer pain point]");
     const focusPromise = pick(psych.benefits, i, "[Add a verified benefit]");
     return {
       position: i + 1,
@@ -184,6 +288,9 @@ export function buildCampaignBrief(input: {
       keyPoints: r.keyPoints,
       focusProblem,
       focusPromise,
+      mainMessage: mainMessageFor(r.intent, productName, focusProblem, focusPromise, psych.proofAvailable),
+      ctaStrategy: CTA_STRATEGIES[r.intent],
+      supportingResearch: supportingResearchFor(r.intent, input.brand, input.research),
     };
   });
 

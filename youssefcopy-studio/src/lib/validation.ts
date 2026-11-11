@@ -39,6 +39,12 @@ export const brandInputSchema = z.object({
     testimonials: text().default(""),
     objections: text().default(""),
     pricing: text().default(""),
+    links: z
+      .string()
+      .trim()
+      .max(LIMITS.longText)
+      .default("")
+      .refine((v) => v.split(/\r?\n/).every((l) => !l.trim() || /^https?:\/\/\S+$/i.test(l.trim())), "Product links must be full http(s) URLs, one per line"),
   }),
 });
 export type BrandInput = z.infer<typeof brandInputSchema>;
@@ -68,6 +74,14 @@ export type CampaignInput = z.infer<typeof campaignInputSchema>;
 export const campaignStatusSchema = z.enum(CAMPAIGN_STATUSES);
 export const emailStatusSchema = z.enum(EMAIL_STATUSES);
 
+/** Guided-writer body parts. The body is composed from these in order. */
+export const emailSectionsSchema = z.object({
+  problem: text(4000).default(""),
+  benefit: text(4000).default(""),
+  transition: text(4000).default(""),
+});
+export type EmailSections = z.infer<typeof emailSectionsSchema>;
+
 export const emailContentSchema = z.object({
   subjectLines: z.array(text(LIMITS.shortText)).max(10).default([]),
   selectedSubject: z.number().int().min(0).max(9).default(0),
@@ -77,14 +91,16 @@ export const emailContentSchema = z.object({
   cta: text(LIMITS.shortText).default(""),
   rationale: text(4000).default(""),
   researchRefs: z.array(text(500)).max(30).default([]),
+  sections: emailSectionsSchema.default({ problem: "", benefit: "", transition: "" }),
 });
 export type EmailContent = z.infer<typeof emailContentSchema>;
 
+// No defaults: omitted fields must stay untouched on update (defaults would blank them).
 export const emailMetaSchema = z.object({
-  objective: text(1000).default(""),
-  segment: text(500).default(""),
-  role: text(500).default(""),
-  framework: text(50).default(""),
+  objective: text(1000).optional(),
+  segment: text(500).optional(),
+  role: text(500).optional(),
+  framework: text(50).optional(),
 });
 
 /** Turn a ZodError into a short, user-safe message. */

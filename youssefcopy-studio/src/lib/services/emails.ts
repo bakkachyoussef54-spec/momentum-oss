@@ -1,12 +1,40 @@
 import { analyzeEmail, type AnalysisResult } from "../analyzer";
 import { db } from "../db";
-import { parseStringArray } from "../json";
+import { parseJson, parseStringArray } from "../json";
+import { campaignBriefSchema } from "../strategy/playbooks";
 import { applyTemplate as fillTemplate } from "../templates/library";
 import { emailContentSchema, emailMetaSchema, emailStatusSchema, type EmailContent } from "../validation";
 import { emailContentOf, toBrandProfile, toResearchItem } from "./mappers";
 import { logActivity } from "./settings";
 
 type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Refill empty plan fields (role, framework, objective, segment) from the campaign brief.
+ * Repairs emails affected by an earlier autosave bug; never overwrites non-empty values.
+ */
+export async function ensureEmailMeta(campaignId: string) {
+  const c = await db.campaign.findUnique({ where: { id: campaignId }, include: { emails: true } });
+  if (!c) return 0;
+  const brief = parseJson(c.brief, campaignBriefSchema, null);
+  if (!brief) return 0;
+  let repaired = 0;
+  for (const e of c.emails) {
+    const plan = brief.emails.find((b) => b.position === e.position);
+    if (!plan) continue;
+    const data: Record<string, string> = {};
+    if (!e.role.trim()) data.role = plan.role;
+    if (!e.framework.trim()) data.framework = plan.framework;
+    if (!e.objective.trim()) data.objective = plan.objective;
+    if (!e.segment.trim()) data.segment = plan.segment;
+    if (Object.keys(data).length) {
+      // updatedAt is kept so the repair doesn't mark exports as stale.
+      await db.campaignEmail.update({ where: { id: e.id }, data: { ...data, updatedAt: e.updatedAt } });
+      repaired++;
+    }
+  }
+  return repaired;
+}
 
 export async function getEmail(id: string) {
   return db.campaignEmail.findUnique({
@@ -43,6 +71,7 @@ async function snapshot(tx: Tx, emailId: string, origin: string, label: string, 
       cta: email.cta,
       rationale: email.rationale,
       researchRefs: email.researchRefs,
+      sections: email.sections,
       origin,
       label,
       aiModel,
@@ -60,6 +89,7 @@ function contentData(c: EmailContent) {
     cta: c.cta,
     rationale: c.rationale,
     researchRefs: JSON.stringify(c.researchRefs),
+    sections: JSON.stringify(c.sections),
   };
 }
 
@@ -68,12 +98,19 @@ async function bumpCampaignToDrafting(tx: Tx, campaignId: string) {
 }
 
 /** Autosave / manual save of the working draft. Human edits of AI copy are marked as such. */
-export async function saveDraft(emailId: string, raw: unknown, meta?: unknown) {
+/** Origin after a human save: AI stays "AI-assisted · edited"; using rule-based assists marks "guided". */
+export function nextOrigin(current: string, assisted: boolean): string {
+  if (current === "ai" || current === "ai_edited") return "ai_edited";
+  if (assisted || current === "guided") return "guided";
+  return "manual";
+}
+
+export async function saveDraft(emailId: string, raw: unknown, meta?: unknown, opts: { assisted?: boolean } = {}) {
   const content = emailContentSchema.parse(raw);
   const m = meta ? emailMetaSchema.partial().parse(meta) : {};
   return db.$transaction(async (tx) => {
     const current = await tx.campaignEmail.findUniqueOrThrow({ where: { id: emailId } });
-    const origin = current.contentOrigin === "ai" || current.contentOrigin === "ai_edited" ? "ai_edited" : "manual";
+    const origin = nextOrigin(current.contentOrigin, Boolean(opts.assisted));
     const updated = await tx.campaignEmail.update({ where: { id: emailId }, data: { ...contentData(content), ...m, contentOrigin: origin } });
     await bumpCampaignToDrafting(tx, current.campaignId);
     return updated;
@@ -91,7 +128,7 @@ export async function restoreVersion(emailId: string, versionId: string) {
     const version = await tx.emailDraftVersion.findFirstOrThrow({ where: { id: versionId, emailId } });
     const current = await tx.campaignEmail.findUniqueOrThrow({ where: { id: emailId } });
     if (hasContent(current)) await snapshot(tx, emailId, current.contentOrigin === "empty" ? "manual" : current.contentOrigin, "Before restoring v" + version.versionNumber);
-    const origin = version.origin === "ai" ? "ai" : version.origin === "ai_edited" ? "ai_edited" : "manual";
+    const origin = ["ai", "ai_edited", "guided", "template"].includes(version.origin) ? version.origin : "manual";
     await tx.campaignEmail.update({
       where: { id: emailId },
       data: {
@@ -103,6 +140,7 @@ export async function restoreVersion(emailId: string, versionId: string) {
         cta: version.cta,
         rationale: version.rationale,
         researchRefs: version.researchRefs,
+        sections: version.sections,
         contentOrigin: origin,
       },
     });
