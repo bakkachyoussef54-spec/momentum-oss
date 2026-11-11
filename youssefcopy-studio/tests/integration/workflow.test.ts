@@ -12,6 +12,7 @@ import { generateEmailDraft } from "@/lib/services/ai";
 import { loadDemoData, removeDemoData } from "@/lib/services/demo";
 import { DEMO_BRAND } from "@/lib/services/demo";
 import { toMarkdown } from "@/lib/export/package";
+import { resetTestDb } from "./reset";
 
 const brandInput = {
   ...DEMO_BRAND,
@@ -25,6 +26,7 @@ describe("end-to-end service workflow (sleep-mask welcome series)", () => {
   let emailIds: string[] = [];
 
   beforeAll(async () => {
+    await resetTestDb();
     const b = await createBrand(brandInput);
     brandId = b.id;
   });

@@ -9,6 +9,10 @@ import { db } from "@/lib/db";
 import { getEmail } from "@/lib/services/emails";
 import { listBrands } from "@/lib/services/brands";
 import { emailContentOf, toBrandProfile, toResearchItem } from "@/lib/services/mappers";
+import { AiReviewPanel, type AiReview } from "@/components/analyzer/ai-review-panel";
+import { getAiStatus } from "@/lib/services/settings";
+import { parseJson, parseStringArray } from "@/lib/json";
+import { z } from "zod";
 
 export const metadata = { title: "Copywriting Analyzer" };
 
@@ -55,7 +59,19 @@ export default async function AnalyzerPage({ searchParams }: { searchParams: Pro
 async function EmailAnalysis({ email }: { email: NonNullable<Awaited<ReturnType<typeof getEmail>>> }) {
   const content = emailContentOf(email);
   const result = analyzeEmail({ ...content, segment: email.segment }, toBrandProfile(email.campaign.brand), email.campaign.brand.researchSources.map(toResearchItem));
-  const history = await db.copywritingAnalysis.findMany({ where: { emailId: email.id }, orderBy: { createdAt: "desc" }, take: 6 });
+  const history = await db.copywritingAnalysis.findMany({ where: { emailId: email.id, method: "heuristic" }, orderBy: { createdAt: "desc" }, take: 6 });
+  const [ai, lastAi] = await Promise.all([getAiStatus(), db.copywritingAnalysis.findFirst({ where: { emailId: email.id, method: { startsWith: "ai:" } }, orderBy: { createdAt: "desc" } })]);
+  const lastReview: AiReview | null = lastAi
+    ? {
+        summary: "",
+        categories: parseJson(lastAi.breakdown, z.array(z.object({ key: z.string(), score: z.number(), comment: z.string() })), []) as AiReview["categories"],
+        improvements: parseStringArray(lastAi.improvements),
+        factualConcerns: parseStringArray(lastAi.flags),
+        total: lastAi.totalScore,
+        model: lastAi.method.slice(3),
+        createdAt: lastAi.createdAt.toISOString(),
+      }
+    : null;
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -71,6 +87,7 @@ async function EmailAnalysis({ email }: { email: NonNullable<Awaited<ReturnType<
         </div>
       </div>
       <AnalysisReport result={result} />
+      <AiReviewPanel emailId={email.id} ai={{ available: ai.available, reason: ai.reason, model: ai.model }} last={lastReview} />
       {history.length > 0 && (
         <SectionCard title="Saved analysis history">
           <ul className="flex flex-wrap gap-2">

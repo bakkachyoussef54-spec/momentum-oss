@@ -43,7 +43,7 @@ export function GeneratorPanel({
   const blocked = readiness === "insufficient";
 
   const requestGenerate = (targets: GenEmail[]) => {
-    if (targets.some((t) => t.contentOrigin !== "empty")) setConfirm(targets);
+    if (targets.some((t) => t.contentOrigin !== "empty" || t.status === "approved")) setConfirm(targets);
     else void generate(targets);
   };
 
@@ -62,7 +62,7 @@ export function GeneratorPanel({
         const res = await fetch("/api/ai/generate", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ emailId: e.id }),
+          body: JSON.stringify({ emailId: e.id, overwriteApproved: true }),
           signal: controller.signal,
         });
         const data = await res.json();
@@ -73,7 +73,8 @@ export function GeneratorPanel({
         }
         const u = data.usage as { inputTokens: number | null; outputTokens: number | null; estimatedCostUsd: number | null };
         setTokens((t) => ({ input: t.input + (u.inputTokens ?? 0), output: t.output + (u.outputTokens ?? 0), cost: t.cost + (u.estimatedCostUsd ?? 0), known: t.known || u.inputTokens !== null }));
-        setRows((r) => ({ ...r, [e.id]: { state: "done", message: "Draft saved — open the editor to review" } }));
+        const missing: string[] = data.missingInformation ?? [];
+        setRows((r) => ({ ...r, [e.id]: { state: "done", message: `AI-assisted draft saved — open the editor to review.${missing.length ? ` Missing info reported: ${missing.join("; ")}` : ""}` } }));
       } catch (err) {
         const cancelled = (err as Error).name === "AbortError";
         setRows((r) => ({ ...r, [e.id]: { state: cancelled ? "cancelled" : "error", message: cancelled ? "Cancelled" : "Network error" } }));
@@ -122,7 +123,7 @@ export function GeneratorPanel({
                 </Button>
               ) : (
                 <Button onClick={() => requestGenerate(empties.length ? empties : emails)} disabled={blocked}>
-                  <Sparkles /> {empties.length ? `Generate ${empties.length} empty email${empties.length === 1 ? "" : "s"}` : "Regenerate all"}
+                  <Sparkles /> {empties.length === emails.length ? `Generate ${emails.length}-email campaign` : empties.length ? `Generate ${empties.length} empty email${empties.length === 1 ? "" : "s"}` : "Regenerate all"}
                 </Button>
               )}
             </div>
@@ -195,7 +196,7 @@ export function GeneratorPanel({
           <DialogHeader>
             <DialogTitle>Replace existing drafts?</DialogTitle>
             <DialogDescription>
-              {confirm?.filter((c) => c.contentOrigin !== "empty").length} email(s) already have content. New AI drafts will replace the working copy; every current draft is saved in version history first and can be restored.
+              {confirm?.filter((c) => c.contentOrigin !== "empty").length} email(s) already have content{confirm?.some((c) => c.status === "approved") ? `, including ${confirm.filter((c) => c.status === "approved").length} approved email(s)` : ""}. New AI-assisted drafts will replace the working copy; every current draft is saved in version history first and can be restored. Approved versions stay in client exports until you approve again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
