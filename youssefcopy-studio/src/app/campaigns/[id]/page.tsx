@@ -3,6 +3,8 @@ import { PackageCheck, PenLine, Sparkles, TriangleAlert } from "lucide-react";
 import { ButtonLink, DemoBadge, OriginBadge, PageHeader, SectionCard, StatusBadge } from "@/components/common";
 import { CampaignControls } from "@/components/campaigns/campaign-controls";
 import { DangerZone } from "@/components/danger-zone";
+import { WorkflowBar } from "@/components/workflow/workflow-bar";
+import { getWorkflow } from "@/lib/services/workflow";
 import { archiveCampaignAction, deleteCampaignAction } from "@/app/actions";
 import { getCampaign, parseBrief } from "@/lib/services/campaigns";
 import { CAMPAIGN_TYPE_LABELS, type CampaignType } from "@/lib/constants";
@@ -13,9 +15,11 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const c = await getCampaign(id);
   if (!c) notFound();
   const brief = parseBrief(c.brief);
+  const workflow = await getWorkflow({ campaignId: c.id });
 
   return (
     <div className="mx-auto max-w-6xl">
+      <WorkflowBar steps={workflow.steps} current="campaign" compact />
       <PageHeader
         eyebrow={`${c.brand.name} · ${CAMPAIGN_TYPE_LABELS[c.type as CampaignType]}`}
         title={c.name}
@@ -107,15 +111,22 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   </div>
                   {plan && (
                     <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                      {plan.mainMessage && (
+                        <p className="sm:col-span-2 rounded-lg bg-primary/5 px-3 py-2"><span className="text-muted-foreground">Main message:</span> {plan.mainMessage}</p>
+                      )}
                       <p><span className="text-muted-foreground">Problem:</span> {plan.focusProblem}</p>
                       <p><span className="text-muted-foreground">Promise:</span> {plan.focusPromise}</p>
+                      {plan.ctaStrategy && <p className="sm:col-span-2"><span className="text-muted-foreground">CTA strategy:</span> {plan.ctaStrategy}</p>}
+                      {plan.supportingResearch.length > 0 && (
+                        <p className="sm:col-span-2"><span className="text-muted-foreground">Supporting research:</span> {plan.supportingResearch.join(" · ")}</p>
+                      )}
                       <p className="sm:col-span-2 text-muted-foreground">Outline: {plan.keyPoints.join(" → ")}</p>
                     </div>
                   )}
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                     <p className="min-w-0 truncate text-sm text-muted-foreground">{subject ? `Subject: ${subject}` : "Not written yet"}</p>
                     <ButtonLink href={`/editor/${e.id}`} size="sm" variant={e.contentOrigin === "empty" ? "default" : "outline"}>
-                      <PenLine /> {e.contentOrigin === "empty" ? "Write email" : "Open editor"}
+                      <PenLine /> {e.contentOrigin === "empty" ? "Write with guidance" : "Open editor"}
                     </ButtonLink>
                   </div>
                 </article>

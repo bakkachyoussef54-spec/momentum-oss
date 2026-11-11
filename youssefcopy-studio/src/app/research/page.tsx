@@ -3,6 +3,9 @@ import { ButtonLink, EmptyState, PageHeader, SectionCard } from "@/components/co
 import { QueryPicker } from "@/components/query-picker";
 import { ReadinessPanel } from "@/components/research/readiness-panel";
 import { ResearchManager } from "@/components/research/research-manager";
+import { PlanCampaignButton } from "@/components/campaigns/plan-campaign-button";
+import { WorkflowBar } from "@/components/workflow/workflow-bar";
+import { getWorkflow } from "@/lib/services/workflow";
 import { getBrand, listBrands } from "@/lib/services/brands";
 import { toBrandProfile, toResearchItem } from "@/lib/services/mappers";
 import { analyzePsychology, validateResearch } from "@/lib/research/validate";
@@ -14,9 +17,11 @@ export default async function ResearchPage({ searchParams }: { searchParams: Pro
   const brands = await listBrands();
   const brandId = brandParam ?? (brands.length === 1 ? brands[0].id : "");
   const brand = brandId ? await getBrand(brandId) : null;
+  const workflow = brand ? await getWorkflow({ brandId: brand.id }) : null;
 
   return (
     <div className="mx-auto max-w-6xl">
+      {workflow && <WorkflowBar steps={workflow.steps} current="research" compact />}
       <PageHeader
         eyebrow="Research validation"
         title="Brand Research"
@@ -46,8 +51,11 @@ function ResearchBody({ brand }: { brand: NonNullable<Awaited<ReturnType<typeof 
         items={brand.researchSources.map((r) => ({ id: r.id, title: r.title, url: r.url, kind: r.kind, category: r.category, content: r.content, status: r.status, flagged: r.flags !== "[]" }))}
       />
       <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-        <SectionCard title="Stage A · Research validation" actions={<ButtonLink href={`/brands/${brand.id}`} variant="ghost" size="sm">Edit profile</ButtonLink>}>
+        <SectionCard title="Stage A · Research validation" actions={<ButtonLink href={`/brands/${brand.id}/brief`} variant="ghost" size="sm">Structured brief</ButtonLink>}>
           <ReadinessPanel validation={validation} />
+        </SectionCard>
+        <SectionCard title="Next: plan the campaign" description="Rule-based three-email plan from this brief.">
+          <PlanCampaignButton brandId={brand.id} size="sm" />
         </SectionCard>
         <SectionCard title="Stage B · Customer psychology" description="Extracted from the profile and verified research only.">
           <dl className="space-y-3 text-sm">
