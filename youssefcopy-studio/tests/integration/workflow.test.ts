@@ -26,7 +26,12 @@ describe("end-to-end service workflow (sleep-mask welcome series)", () => {
   let emailIds: string[] = [];
 
   beforeAll(async () => {
+<<<<<<< HEAD
     await resetTestDb();
+=======
+    // Integration files share test.db and run in any order; this suite asserts absolute counts.
+    await db.brand.deleteMany();
+>>>>>>> 91c044d (Tests: isolate workflow integration suite from shared test.db order)
     const b = await createBrand(brandInput);
     brandId = b.id;
   });
