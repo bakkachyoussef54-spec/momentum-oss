@@ -93,6 +93,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   await page.getByLabel("Apply template").selectOption({ label: "Welcome · The one thing we fix" });
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await page.getByRole("button", { name: "Apply template" }).click();
+  await page.getByRole("tab", { name: "Freeform" }).click();
   await expect(page.getByLabel("Body copy")).toHaveValue(/Somna Contour Mask/);
 
   await page.getByLabel("Subject line 1", { exact: true }).fill("Darker mornings, starting tonight");
@@ -105,6 +106,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   await page.getByRole("button", { name: "Save version" }).click();
   await expect(page.getByText(/Saved as version/)).toBeVisible();
   await page.reload();
+  await page.getByRole("tab", { name: "Freeform" }).click();
   await expect(page.getByLabel("Subject line 1", { exact: true })).toHaveValue("Darker mornings, starting tonight");
   await expect(page.getByLabel("Body copy")).toHaveValue(/molded eye cups/);
   await expect(page.getByTestId("version-list").locator("li")).toHaveCount(2); // template snapshot + manual save
@@ -112,8 +114,11 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   // Preview mode and AI actions disabled
   await page.getByRole("tab", { name: "Inbox preview" }).click();
   await expect(page.getByTestId("email-preview")).toContainText("See how the contour works");
-  await page.getByRole("tab", { name: "Freeform" }).click();
-  await expect(page.getByRole("button", { name: "Improve Clarity" })).toBeDisabled();
+  // AI Mode without a provider explains how to connect; Human Mode keeps working.
+  await page.getByTestId("mode-ai").click();
+  await expect(page.getByTestId("ai-workbench-disabled")).toBeVisible();
+  await page.getByTestId("mode-human").click();
+  await expect(page.getByTestId("guided-writer")).toBeVisible();
 
   // Approve
   await page.getByLabel("Email status").selectOption("approved");

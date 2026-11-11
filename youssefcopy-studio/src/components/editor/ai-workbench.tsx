@@ -106,6 +106,7 @@ export function AiWorkbench({
     const data = await call("/api/ai/generate", { emailId, prefs: prefsPayload, overwriteApproved: approved }, "draft");
     if (!data) return;
     setLastMissing(data.missingInformation ?? []);
+    if (data.missingInformation?.length) toast.warning(`The AI reported missing information (not invented): ${data.missingInformation.join("; ")}`, { duration: 15_000 });
     toast.success(`AI-assisted draft created${data.usage?.inputTokens != null ? ` (${data.usage.inputTokens + (data.usage.outputTokens ?? 0)} tokens)` : ""}. The previous draft is in version history.`);
     onGenerated({ missingInformation: data.missingInformation ?? [] });
   };
