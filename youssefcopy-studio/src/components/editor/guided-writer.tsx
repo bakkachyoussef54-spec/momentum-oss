@@ -182,7 +182,7 @@ export function GuidedWriter({ state, ctx, brandId, bodyLinked, review, busy, on
         </ol>
       </nav>
 
-      <section className="min-w-0 space-y-5" aria-labelledby="guided-step-title">
+      <section className="min-w-0 space-y-5" aria-label="Current writing step">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Step {idx + 1} of {WRITING_STEPS.length}</p>
           <h2 id="guided-step-title" className="mt-0.5 font-display text-xl">{guide.title}</h2>
