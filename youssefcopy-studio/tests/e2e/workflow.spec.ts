@@ -76,7 +76,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
   await page.getByRole("button", { name: "Generate Campaign Brief" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Somna Welcome Series" })).toBeVisible();
   await expect(page.getByTestId("sequence-email")).toHaveCount(3);
-  await expect(page.getByRole("heading", { name: "Address the primary objection" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Address the most important customer objection" })).toBeVisible();
   const campaignId = page.url().split("/").pop()!;
 
   // AI-unconfigured generator offers manual scaffolds
@@ -88,7 +88,7 @@ test("complete sleep-mask welcome-series workflow persists and exports", async (
 
   // Editor: template, edit, autosave, version, reload
   await page.goto(`/campaigns/${campaignId}`);
-  await page.getByTestId("sequence-email").first().getByRole("link", { name: "Write email" }).click();
+  await page.getByTestId("sequence-email").first().getByRole("link", { name: "Write with guidance" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Email 1");
   await page.getByLabel("Apply template").selectOption({ label: "Welcome · The one thing we fix" });
   await page.getByRole("button", { name: "Apply", exact: true }).click();

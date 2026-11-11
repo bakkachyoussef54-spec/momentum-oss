@@ -274,7 +274,7 @@ export function buildCampaignBrief(input: {
   const emails: BriefEmail[] = roles.map((r, i) => {
     const framework = selectFramework(r.intent, { proofAvailable: psych.proofAvailable, hasPricing });
     const focusProblem =
-      r.intent === "objection" ? pick(psych.objections, i, "[Add a purchase objection to the brand profile]") : pick(psych.painPoints, i, "[Add a customer pain point]");
+      r.intent === "objection" ? pick(psych.objections, roles.slice(0, i).filter((x) => x.intent === "objection").length, "[Add a purchase objection to the brand profile]") : pick(psych.painPoints, i, "[Add a customer pain point]");
     const focusPromise = pick(psych.benefits, i, "[Add a verified benefit]");
     return {
       position: i + 1,
