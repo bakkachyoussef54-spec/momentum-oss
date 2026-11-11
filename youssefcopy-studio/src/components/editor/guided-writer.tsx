@@ -75,12 +75,12 @@ export function GuidedWriter({
   };
 
   return (
-    <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 sm:p-6 md:grid-cols-[190px_minmax(0,1fr)]" data-testid="guided-writer">
+    <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 sm:p-6 2xl:grid-cols-[190px_minmax(0,1fr)]" data-testid="guided-writer">
       <nav aria-label="Writing steps">
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <ListChecks className="size-3.5" /> {doneCount}/{WRITING_STEPS.length} steps
         </p>
-        <ol className="flex gap-1 overflow-x-auto md:flex-col">
+        <ol className="flex gap-1 overflow-x-auto pb-1 2xl:flex-col 2xl:pb-0">
           {WRITING_STEPS.map((s, i) => {
             const done = stepComplete(s, content);
             return (
