@@ -123,10 +123,19 @@ export async function createVersion(emailId: string, label: string) {
 }
 
 /** Restoring never loses work: the current draft is snapshotted first. */
-export async function restoreVersion(emailId: string, versionId: string) {
+/** Thrown when an automated change would replace an approved email without explicit confirmation. */
+export class ApprovedLockError extends Error {
+  constructor(position: number) {
+    super(`Email ${position} is approved — confirm before replacing its working draft. The approved version stays in history and exports until you re-approve.`);
+    this.name = "ApprovedLockError";
+  }
+}
+
+export async function restoreVersion(emailId: string, versionId: string, opts: { confirmApproved?: boolean } = {}) {
   return db.$transaction(async (tx) => {
     const version = await tx.emailDraftVersion.findFirstOrThrow({ where: { id: versionId, emailId } });
     const current = await tx.campaignEmail.findUniqueOrThrow({ where: { id: emailId } });
+    if (current.status === "approved" && !opts.confirmApproved) throw new ApprovedLockError(current.position);
     if (hasContent(current)) await snapshot(tx, emailId, current.contentOrigin === "empty" ? "manual" : current.contentOrigin, "Before restoring v" + version.versionNumber);
     const origin = ["ai", "ai_edited", "guided", "template"].includes(version.origin) ? version.origin : "manual";
     await tx.campaignEmail.update({
@@ -152,12 +161,13 @@ export async function restoreVersion(emailId: string, versionId: string) {
 export async function replaceContent(
   emailId: string,
   raw: unknown,
-  opts: { origin: "ai" | "template" | "ai_edited"; label: string; aiModel?: string; meta?: unknown },
+  opts: { origin: "ai" | "template" | "ai_edited"; label: string; aiModel?: string; meta?: unknown; confirmApproved?: boolean },
 ) {
   const content = emailContentSchema.parse(raw);
   const m = opts.meta ? emailMetaSchema.partial().parse(opts.meta) : {};
   return db.$transaction(async (tx) => {
     const current = await tx.campaignEmail.findUniqueOrThrow({ where: { id: emailId } });
+    if (current.status === "approved" && !opts.confirmApproved) throw new ApprovedLockError(current.position);
     if (hasContent(current)) await snapshot(tx, emailId, current.contentOrigin === "empty" ? "manual" : current.contentOrigin, `Before: ${opts.label}`);
     await tx.campaignEmail.update({ where: { id: emailId }, data: { ...contentData(content), ...m, contentOrigin: opts.origin } });
     await bumpCampaignToDrafting(tx, current.campaignId);
@@ -165,7 +175,7 @@ export async function replaceContent(
   });
 }
 
-export async function applyTemplateToEmail(emailId: string, templateId: string) {
+export async function applyTemplateToEmail(emailId: string, templateId: string, opts: { confirmApproved?: boolean } = {}) {
   const [email, template] = await Promise.all([
     db.campaignEmail.findUniqueOrThrow({ where: { id: emailId }, include: { campaign: { include: { brand: { include: { products: { take: 1, orderBy: { createdAt: "asc" } } } } } } } }),
     db.template.findUniqueOrThrow({ where: { id: templateId } }),
@@ -185,7 +195,7 @@ export async function applyTemplateToEmail(emailId: string, templateId: string) 
   const v = await replaceContent(
     emailId,
     { ...filled, selectedSubject: 0, rationale: `Template “${template.name}” (${template.framework}): ${template.goal}`, researchRefs: [] },
-    { origin: "template", label: `Applied template: ${template.name}`, meta: { framework: template.framework } },
+    { origin: "template", label: `Applied template: ${template.name}`, meta: { framework: template.framework }, confirmApproved: opts.confirmApproved },
   );
   await logActivity({ type: "template.applied", message: `Applied template ${template.name} to email ${email.position} of ${email.campaign.name}`, entityType: "email", entityId: emailId, brandId: email.campaign.brandId });
   return v;
