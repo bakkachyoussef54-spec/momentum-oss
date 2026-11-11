@@ -2,6 +2,8 @@ import { CAMPAIGN_TYPE_LABELS, type CampaignType } from "../constants";
 
 export interface PackageEmail {
   position: number;
+  /** Working email id, used only for in-app links (not exported). */
+  editorId?: string;
   role: string;
   objective: string;
   framework: string;

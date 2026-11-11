@@ -27,7 +27,7 @@ export default async function AnalyzerPage({ searchParams }: { searchParams: Pro
       <PageHeader
         eyebrow="Copywriting Quality Analyzer"
         title="Copywriting Analyzer"
-        description="Transparent advisory scoring out of 100 — Audience 20 · Clarity 20 · Benefits 20 · Persuasiveness 15 · CTA 10 · Specificity 10 · Voice 5."
+        description="Transparent advisory scoring out of 100 — Audience 15 · Clarity 15 · Benefits 15 · Persuasiveness 15 · Factual accuracy 15 · CTA 10 · Specificity 10 · Voice 5. Heuristic only: it cannot predict sales."
         actions={
           <div className="flex flex-wrap items-end gap-2">
             {!adHoc && <QueryPicker param="email" label="Email" value={email?.id ?? ""} placeholder="Select an email…" options={emails.map((e) => ({ value: e.id, label: `${e.campaign.brand.name} · ${e.campaign.name} · #${e.position}` }))} />}

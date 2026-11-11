@@ -21,7 +21,7 @@ export const EMPTY_BRAND: BrandInput = {
   competitors: "",
   restrictions: "",
   researchNotes: "",
-  product: { name: "", category: "", description: "", targetAudience: "", painPoints: "", desires: "", features: "", benefits: "", usp: "", testimonials: "", objections: "", pricing: "" },
+  product: { name: "", category: "", description: "", targetAudience: "", painPoints: "", desires: "", features: "", benefits: "", usp: "", testimonials: "", objections: "", pricing: "", links: "" },
 };
 
 type ProductKey = keyof BrandInput["product"];
@@ -40,7 +40,52 @@ const PRODUCT_FIELDS: { key: ProductKey; label: string; hint?: string; multiline
   { key: "testimonials", label: "Testimonials or reviews", hint: "Paste real, attributable reviews only. Add the source in Research and mark it verified.", multiline: true },
   { key: "objections", label: "Purchase objections", hint: "One per line", multiline: true },
   { key: "pricing", label: "Pricing & promotional details", hint: "Exact prices, offers and end dates approved by the client. Leave blank if none.", multiline: true, rows: 2 },
+  { key: "links", label: "Product links", hint: "Product page URLs, one per line. Used as references only — never scraped.", multiline: true, rows: 2 },
 ];
+
+/** Guided intake: live completion status per section of the brief. */
+function IntakeChecklist({ form }: { form: BrandInput }) {
+  const p = form.product;
+  const has = (s: string) => s.trim().length > 0;
+  const items: [string, boolean, string][] = [
+    ["Brand identity", has(form.name) && (has(form.website) || has(p.category)), "name"],
+    ["Product information", has(p.name) && has(p.description), "product-name"],
+    ["Target audience", has(p.targetAudience), "product-targetAudience"],
+    ["Pain points", has(p.painPoints), "product-painPoints"],
+    ["Desires", has(p.desires), "product-desires"],
+    ["Verified benefits", has(p.benefits), "product-benefits"],
+    ["Objections", has(p.objections), "product-objections"],
+    ["Brand voice", has(form.toneOfVoice), "toneOfVoice"],
+    ["Product links", has(p.links) || has(form.website), "product-links"],
+  ];
+  const done = items.filter(([, ok]) => ok).length;
+  return (
+    <div className="rounded-xl border border-border bg-card p-4" data-testid="intake-checklist">
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="font-semibold uppercase tracking-wider text-muted-foreground">Guided intake</span>
+        <span className="tabular-nums text-muted-foreground">{done}/{items.length} sections</span>
+      </div>
+      <div className="mb-3 h-1 rounded-full bg-muted">
+        <div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+      </div>
+      <ul className="flex flex-wrap gap-1.5">
+        {items.map(([label, ok, target]) => (
+          <li key={label}>
+            <button
+              type="button"
+              onClick={() => document.getElementById(target)?.focus()}
+              className={`rounded-full px-2.5 py-1 text-xs transition-colors ${ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+            >
+              {ok ? "✓ " : ""}
+              {label}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted-foreground">Research evidence is added per source in Brand Research. Leave unknowns blank — gaps are flagged, never filled in for you.</p>
+    </div>
+  );
+}
 
 export function BrandForm({ brandId, initial }: { brandId?: string; initial: BrandInput }) {
   const router = useRouter();
@@ -95,6 +140,7 @@ export function BrandForm({ brandId, initial }: { brandId?: string; initial: Bra
 
   return (
     <form onSubmit={submit} className="space-y-6" noValidate>
+      <IntakeChecklist form={form} />
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
         <p className="text-muted-foreground">
           Have a client brief in a doc? Paste it and the studio fills matching fields — nothing is invented.
