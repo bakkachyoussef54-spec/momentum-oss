@@ -1,4 +1,4 @@
-import type { CampaignType } from "../constants";
+import { CAMPAIGN_TYPE_LABELS, type CampaignType } from "../constants";
 import { db } from "../db";
 import { parseJson } from "../json";
 import { buildCampaignBrief, campaignBriefSchema, type CampaignBrief } from "../strategy/playbooks";
@@ -58,12 +58,40 @@ export async function createCampaign(raw: CampaignInput, opts: { isDemo?: boolea
           objective: e.objective,
           framework: e.framework,
           segment: e.segment,
+          researchRefs: JSON.stringify(e.supportingResearch),
         })),
       },
     },
   });
   await logActivity({ type: "campaign.created", message: `Created campaign ${campaign.name} (${input.emailCount} emails)`, entityType: "campaign", entityId: campaign.id, brandId: brand.id });
   return campaign;
+}
+
+/**
+ * One-click planning: a three-email campaign from the stored brand brief, using sensible defaults
+ * (audience = profile target audience, tone = brand voice). Rule-based; no AI provider involved.
+ */
+export async function planCampaignFromBrand(brandId: string, type: CampaignType = "welcome") {
+  const brand = await db.brand.findUnique({ where: { id: brandId }, include: { products: { take: 1, orderBy: { createdAt: "asc" } } } });
+  if (!brand) throw new Error("Brand not found");
+  const p = brand.products[0];
+  const product = p?.name || brand.name;
+  const label = CAMPAIGN_TYPE_LABELS[type];
+  const goals: Partial<Record<CampaignType, string>> = {
+    welcome: `Turn new subscribers into first-time customers of ${product}`,
+    abandoned_cart: `Help shoppers who left ${product} in their cart complete the purchase`,
+    post_purchase: `Help new ${product} customers get the promised benefit and stay engaged`,
+  };
+  const existing = await db.campaign.count({ where: { brandId, type } });
+  return createCampaign({
+    brandId,
+    name: `${label} — ${brand.name}${existing ? ` (${existing + 1})` : ""}`.slice(0, 200),
+    type,
+    audience: (p?.targetAudience.trim() || "New subscribers").slice(0, 2000),
+    goal: goals[type] ?? `Move ${p?.targetAudience.trim() ? "the target audience" : "subscribers"} toward buying ${product}`,
+    tone: (brand.toneOfVoice.trim().split(/[.\n]/)[0] || "Warm & reassuring").slice(0, 200),
+    emailCount: 3,
+  });
 }
 
 /** Re-plan the brief from the latest research; email content is left untouched. */

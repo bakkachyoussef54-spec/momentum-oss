@@ -10,6 +10,7 @@ import {
   Clipboard,
   CloudOff,
   History,
+  ListChecks,
   LayoutTemplate,
   Loader2,
   Monitor,
@@ -35,6 +36,9 @@ import { cn } from "@/lib/utils";
 import { analyzeEmail, SCORE_DISCLAIMER } from "@/lib/analyzer";
 import { wordCount } from "@/lib/json";
 import { EMAIL_STATUSES, EMAIL_STATUS_LABELS } from "@/lib/constants";
+import type { EmailSections } from "@/lib/validation";
+import { composeBody, type AssistContext } from "@/lib/writing/assist";
+import { GuidedWriter } from "./guided-writer";
 import type { BrandProfile, ResearchItem } from "@/lib/types";
 import { applyContentAction, applyTemplateAction, createVersionAction, restoreVersionAction, saveDraftAction, setEmailStatusAction } from "@/app/actions";
 
@@ -47,6 +51,7 @@ export interface EditorContent {
   cta: string;
   rationale: string;
   researchRefs: string[];
+  sections: EmailSections;
 }
 
 export interface EditorProps {
@@ -68,6 +73,7 @@ export interface EditorProps {
   research: ResearchItem[];
   templates: { id: string; name: string; category: string; framework: string }[];
   ai: { available: boolean; reason: string; model: string | null };
+  plan: AssistContext["plan"];
 }
 
 const clockNow = () => Date.now();
@@ -98,7 +104,9 @@ export function plainTextEmail(c: EditorContent): string {
 }
 
 export function EmailEditor(props: EditorProps) {
-  const { email, campaign, sequence, versions, brand, research, templates, ai } = props;
+  const { email, campaign, sequence, versions, brand, research, templates, ai, plan } = props;
+  const assisted = useRef(false);
+  const assistCtx = useMemo<AssistContext>(() => ({ brand, research, plan }), [brand, research, plan]);
   const router = useRouter();
   const [content, setContent] = useState<EditorContent>(() => ({
     ...email.content,
@@ -107,7 +115,7 @@ export function EmailEditor(props: EditorProps) {
   const [meta, setMeta] = useState({ objective: email.objective, segment: email.segment });
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [view, setView] = useState<"edit" | "desktop" | "mobile" | "text">("edit");
+  const [view, setView] = useState<"guided" | "edit" | "desktop" | "mobile" | "text">(email.contentOrigin === "empty" || email.contentOrigin === "guided" ? "guided" : "edit");
   const [pending, start] = useTransition();
   const [confirmRestore, setConfirmRestore] = useState<EditorProps["versions"][number] | null>(null);
   const [templateId, setTemplateId] = useState("");
@@ -138,7 +146,7 @@ export function EmailEditor(props: EditorProps) {
     if (inflight.current) await inflight.current;
     setSaveState("saving");
     const { content: c, meta: m } = latest.current;
-    const p = saveDraftAction(email.id, c, m).then((res) => {
+    const p = saveDraftAction(email.id, c, m, assisted.current).then((res) => {
       if (res.ok) {
         setSaveState("saved");
         setLastSaved(new Date());
@@ -171,6 +179,21 @@ export function EmailEditor(props: EditorProps) {
     }
     setContent((c) => ({ ...c, ...patch }));
     schedule();
+  };
+
+  const bodyLinked = !content.body.trim() || content.body === composeBody(content.sections);
+
+  /** Section edits flow into the body while it is still built from sections (or empty). */
+  const updateSections = (patch: Partial<EmailSections>) => {
+    const cur = latest.current.content;
+    const sections = { ...cur.sections, ...patch };
+    const linked = !cur.body.trim() || cur.body === composeBody(cur.sections);
+    update(linked ? { sections, body: composeBody(sections) } : { sections });
+  };
+
+  const rebuildBody = () => {
+    if (!window.confirm("Replace the current body copy with steps 4–6 (problem, benefit, transition)? You can undo this.")) return;
+    update({ body: composeBody(latest.current.content.sections) });
   };
 
   const undo = () => {
@@ -209,7 +232,7 @@ export function EmailEditor(props: EditorProps) {
       window.removeEventListener("beforeunload", onUnload);
       if (timer.current) {
         clearTimeout(timer.current);
-        void saveDraftAction(email.id, latest.current.content, latest.current.meta);
+        void saveDraftAction(email.id, latest.current.content, latest.current.meta, assisted.current);
       }
       aiAbort.current?.abort();
     };
@@ -419,7 +442,8 @@ export function EmailEditor(props: EditorProps) {
             <div role="tablist" aria-label="View mode" className="flex gap-1 rounded-lg bg-muted p-1 text-xs">
               {(
                 [
-                  ["edit", "Edit", PenLine],
+                  ["guided", "Guided", ListChecks],
+                  ["edit", "Freeform", PenLine],
                   ["desktop", "Inbox preview", Monitor],
                   ["mobile", "Mobile", Smartphone],
                   ["text", "Plain text", Text],
@@ -448,7 +472,19 @@ export function EmailEditor(props: EditorProps) {
             </div>
           </div>
 
-          {view === "edit" ? (
+          {view === "guided" ? (
+            <GuidedWriter
+              content={content}
+              ctx={assistCtx}
+              bodyLinked={bodyLinked}
+              onChange={(patch) => update(patch)}
+              onSections={updateSections}
+              onAssist={() => {
+                assisted.current = true;
+              }}
+              onRebuildBody={rebuildBody}
+            />
+          ) : view === "edit" ? (
             <div className="space-y-5 rounded-2xl border border-border bg-card p-5 sm:p-6">
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Subject lines <span className="font-normal text-muted-foreground">— select the primary option</span></legend>
@@ -601,9 +637,13 @@ export function EmailEditor(props: EditorProps) {
               </ul>
             )}
             <div className="mt-4 border-t border-border pt-3">
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</p>
-              <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                {analysis.improvements.map((s) => <li key={s}>{s}</li>)}
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top weaknesses</p>
+              <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted-foreground">
+                {analysis.weaknesses.map((w) => (
+                  <li key={w.title}>
+                    <span className="font-medium text-foreground">{w.title}.</span> {w.suggestion}
+                  </li>
+                ))}
               </ol>
             </div>
             <p className="mt-3 text-[11px] leading-snug text-muted-foreground/80">{SCORE_DISCLAIMER}</p>

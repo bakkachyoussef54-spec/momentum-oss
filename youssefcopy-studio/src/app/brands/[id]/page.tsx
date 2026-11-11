@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Microscope, Plus } from "lucide-react";
+import { FileText, Microscope, Plus } from "lucide-react";
 import { ButtonLink, DemoBadge, PageHeader, SectionCard, StatusBadge } from "@/components/common";
 import { BrandForm } from "@/components/brands/brand-form";
 import { DangerZone } from "@/components/danger-zone";
+import { PlanCampaignButton } from "@/components/campaigns/plan-campaign-button";
+import { WorkflowBar } from "@/components/workflow/workflow-bar";
+import { getWorkflow } from "@/lib/services/workflow";
 import { ReadinessPanel } from "@/components/research/readiness-panel";
 import { archiveBrandAction, deleteBrandAction } from "@/app/actions";
 import { getBrand } from "@/lib/services/brands";
@@ -19,6 +22,7 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
   const profile = toBrandProfile(brand);
   const validation = validateResearch(profile, brand.researchSources.map(toResearchItem));
   const p = brand.products[0];
+  const workflow = await getWorkflow({ brandId: brand.id });
   const initial = {
     name: brand.name,
     website: brand.website,
@@ -28,12 +32,13 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
     restrictions: brand.restrictions,
     researchNotes: brand.researchNotes,
     product: p
-      ? { name: p.name, category: p.category, description: p.description, targetAudience: p.targetAudience, painPoints: p.painPoints, desires: p.desires, features: p.features, benefits: p.benefits, usp: p.usp, testimonials: p.testimonials, objections: p.objections, pricing: p.pricing }
+      ? { name: p.name, category: p.category, description: p.description, targetAudience: p.targetAudience, painPoints: p.painPoints, desires: p.desires, features: p.features, benefits: p.benefits, usp: p.usp, testimonials: p.testimonials, objections: p.objections, pricing: p.pricing, links: p.links }
       : { ...EMPTY_PRODUCT },
   };
 
   return (
     <div className="mx-auto max-w-6xl">
+      <WorkflowBar steps={workflow.steps} current="brand" compact />
       <PageHeader
         eyebrow="Brand profile"
         title={brand.name}
@@ -45,6 +50,9 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
         }
         actions={
           <>
+            <ButtonLink href={`/brands/${brand.id}/brief`} variant="outline">
+              <FileText /> Structured brief
+            </ButtonLink>
             <ButtonLink href={`/research?brand=${brand.id}`} variant="outline">
               <Microscope /> Research ({brand.researchSources.length})
             </ButtonLink>
@@ -57,6 +65,11 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <BrandForm brandId={brand.id} initial={initial} />
         <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+          <div id="plan">
+            <SectionCard title="One-click campaign plan" description="Three emails with objectives, frameworks, segments, CTA strategy and timing — planned by rules from this brief. No API key needed.">
+              <PlanCampaignButton brandId={brand.id} />
+            </SectionCard>
+          </div>
           <SectionCard title="Research validation">
             <ReadinessPanel validation={validation} compact />
           </SectionCard>

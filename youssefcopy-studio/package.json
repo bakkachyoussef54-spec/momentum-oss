@@ -12,10 +12,11 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "postinstall": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
+    "db:migrate": "node scripts/backup-db.mjs && prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "setup": "prisma migrate deploy && prisma generate"
+    "setup": "node scripts/backup-db.mjs && prisma migrate deploy && prisma generate",
+    "db:backup": "node scripts/backup-db.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

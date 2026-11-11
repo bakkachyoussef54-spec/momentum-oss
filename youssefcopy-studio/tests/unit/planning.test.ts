@@ -18,7 +18,15 @@ describe("strategy planner", () => {
 
   it("matches the welcome-series roles from the brief", () => {
     const b = buildCampaignBrief({ type: "welcome", emailCount: 3, audience: "New subscribers", goal: "First purchase", tone: "Calm", brand: sleepMaskBrand(), research: verifiedResearch });
-    expect(b.emails.map((e) => e.role)).toEqual(["Introduce the product and central benefit", "Address the primary objection", "Reinforce trust and guide toward purchase"]);
+    expect(b.emails.map((e) => e.role)).toEqual(["Introduce the product and its primary benefit", "Address the most important customer objection", "Reinforce the value and guide the purchase decision"]);
+    for (const e of b.emails) {
+      expect(e.mainMessage).toBeTruthy();
+      expect(e.ctaStrategy).toBeTruthy();
+      expect(e.timing).toBeTruthy();
+      expect(e.segment).toBeTruthy();
+    }
+    expect(b.emails[0].supportingResearch).toContain("Spec sheet");
+    expect(b.emails[1].supportingResearch).toContain("Profile: objections");
     expect(b.emails[1].framework).toBe("PAS");
     expect(b.emails[1].focusProblem).toMatch(/uncomfortable|slip/);
     expect(b.createdBy).toBe("planner");

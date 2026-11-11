@@ -5,6 +5,9 @@ import { PackagePreview } from "@/components/delivery/package-preview";
 import { listCampaigns } from "@/lib/services/campaigns";
 import { buildClientPackage } from "@/lib/services/export";
 import { CAMPAIGN_STATUS_LABELS, type CampaignStatus } from "@/lib/constants";
+import { emailPackageChecks } from "@/lib/workflow/steps";
+import { getWorkflow } from "@/lib/services/workflow";
+import { WorkflowBar } from "@/components/workflow/workflow-bar";
 
 export const metadata = { title: "Client Delivery" };
 
@@ -13,9 +16,11 @@ export default async function DeliveryPage({ searchParams }: { searchParams: Pro
   const campaigns = (await listCampaigns()).sort((a, b) => Number(b.status === "completed") - Number(a.status === "completed"));
   const selected = campaigns.find((c) => c.id === campaignParam) ?? null;
   const pkg = selected ? await buildClientPackage(selected.id) : null;
+  const workflow = selected ? await getWorkflow({ campaignId: selected.id }) : null;
 
   return (
     <div className="mx-auto max-w-6xl">
+      {workflow && <WorkflowBar steps={workflow.steps} current="review" compact />}
       <PageHeader
         eyebrow="Client Delivery Package"
         title="Client Delivery"
@@ -43,6 +48,7 @@ export default async function DeliveryPage({ searchParams }: { searchParams: Pro
           </div>
           <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
             <SectionCard title="Export Client Package">
+              <div id="export" />
               <div className="grid gap-2">
                 <ButtonLink href={`/api/export/${selected.id}?format=docx`} prefetch={false} data-testid="export-docx">
                   <Download /> Word (.docx)
@@ -59,18 +65,32 @@ export default async function DeliveryPage({ searchParams }: { searchParams: Pro
               </div>
               <p className="mt-3 text-xs text-muted-foreground">PDF uses your browser’s “Save as PDF” print option on a print-optimized page.</p>
             </SectionCard>
-            <SectionCard title="Delivery checklist">
-              <ul className="space-y-2 text-sm">
-                {pkg.emails.map((e) => (
-                  <li key={e.position} className="flex items-start gap-2">
-                    {e.approved && !e.editedSinceApproval ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />}
-                    <span>
-                      Email {e.position}:{" "}
-                      {e.approved ? (e.editedSinceApproval ? "approved, but edited since — re-approve to include the latest edits" : "approved") : "not approved — exported as a draft"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            <SectionCard title="Review checklist">
+              <div id="review" className="space-y-4" data-testid="review-checklist">
+                {pkg.emails.map((e) => {
+                  const r = emailPackageChecks(e);
+                  const ok = r.checks.every((c) => c.ok);
+                  return (
+                    <div key={e.position}>
+                      <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+                        {ok ? <CircleCheck className="size-4 text-success" /> : <TriangleAlert className="size-4 text-warning" />} Email {e.position}
+                        {e.editorId && (
+                          <a href={`/editor/${e.editorId}`} className="ml-auto text-xs font-normal text-primary hover:underline">
+                            Open
+                          </a>
+                        )}
+                      </p>
+                      <ul className="space-y-0.5 pl-6 text-xs">
+                        {r.checks.map((c) => (
+                          <li key={c.label} className={c.ok ? "text-muted-foreground" : "text-warning"}>
+                            {c.ok ? "✓" : "○"} {c.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
               {selected.status !== "completed" && <p className="mt-3 text-xs text-muted-foreground">Tip: mark the campaign “Completed” on its page once every email is approved.</p>}
             </SectionCard>
           </aside>

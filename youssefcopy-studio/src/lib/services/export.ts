@@ -24,6 +24,7 @@ export async function buildClientPackage(campaignId: string): Promise<ClientPack
     const src = approved ?? e;
     return {
       position: e.position,
+      editorId: e.id,
       role: e.role,
       objective: e.objective,
       framework: e.framework,

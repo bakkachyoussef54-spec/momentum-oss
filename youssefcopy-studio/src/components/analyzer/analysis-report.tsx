@@ -43,15 +43,23 @@ export function AnalysisReport({ result }: { result: AnalysisResult }) {
         </section>
         <div className="space-y-6">
           <section className="rounded-2xl border border-primary/30 bg-primary/5 p-5">
-            <h2 className="mb-3 font-display text-base">Top 3 prioritized improvements</h2>
-            <ol className="space-y-2.5">
-              {result.improvements.map((s, i) => (
-                <li key={s} className="flex gap-3 text-sm">
-                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-white">{i + 1}</span>
-                  {s}
-                </li>
-              ))}
-            </ol>
+            <h2 className="mb-3 font-display text-base">Top 3 highest-priority weaknesses</h2>
+            {result.weaknesses.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No weaknesses found by the rule set. A human review is still recommended.</p>
+            ) : (
+              <ol className="space-y-3" data-testid="weaknesses">
+                {result.weaknesses.map((w, i) => (
+                  <li key={w.title} className="flex gap-3 text-sm">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-white">{i + 1}</span>
+                    <div>
+                      <p className="font-medium">{w.title}</p>
+                      <p className="text-muted-foreground">{w.why}</p>
+                      <p className="mt-1"><span className="font-medium text-primary">Fix:</span> {w.suggestion}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
           <section className="rounded-2xl border border-border bg-card p-5">
             <h2 className="mb-3 font-display text-base">Flags ({result.flags.length})</h2>

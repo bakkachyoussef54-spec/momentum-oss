@@ -1,4 +1,11 @@
-import { parseStringArray } from "../json";
+import { parseJson, parseStringArray } from "../json";
+import { emailSectionsSchema, type EmailSections } from "../validation";
+
+const EMPTY_SECTIONS: EmailSections = { problem: "", benefit: "", transition: "" };
+
+export function parseSections(raw: string | undefined): EmailSections {
+  return parseJson(raw, emailSectionsSchema, EMPTY_SECTIONS);
+}
 import { EMPTY_PRODUCT, type BrandProfile, type ResearchItem } from "../types";
 
 interface BrandRow {
@@ -22,6 +29,7 @@ interface BrandRow {
     testimonials: string;
     objections: string;
     pricing: string;
+    links: string;
   }[];
 }
 
@@ -49,6 +57,7 @@ export function toBrandProfile(brand: BrandRow): BrandProfile {
           testimonials: p.testimonials,
           objections: p.objections,
           pricing: p.pricing,
+          links: p.links,
         }
       : { ...EMPTY_PRODUCT },
   };
@@ -67,6 +76,7 @@ export function emailContentOf(e: {
   cta: string;
   rationale: string;
   researchRefs: string;
+  sections?: string;
 }) {
   return {
     subjectLines: parseStringArray(e.subjectLines),
@@ -77,5 +87,6 @@ export function emailContentOf(e: {
     cta: e.cta,
     rationale: e.rationale,
     researchRefs: parseStringArray(e.researchRefs),
+    sections: parseSections(e.sections),
   };
 }

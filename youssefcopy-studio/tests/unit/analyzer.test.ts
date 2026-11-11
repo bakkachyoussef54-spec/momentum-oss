@@ -17,19 +17,22 @@ describe("analyzeEmail", () => {
   it("scores out of 100 with the specified category weights", () => {
     const r = analyzeEmail(goodEmail, sleepMaskBrand(), verifiedResearch);
     expect(r.breakdown.map((b) => [b.key, b.max])).toEqual([
-      ["audience", 20],
-      ["clarity", 20],
-      ["benefits", 20],
+      ["audience", 15],
+      ["clarity", 15],
+      ["benefits", 15],
       ["persuasiveness", 15],
       ["cta", 10],
       ["specificity", 10],
       ["voice", 5],
+      ["factual", 15],
     ]);
+    expect(r.breakdown.reduce((s, b) => s + b.max, 0)).toBe(100);
     expect(r.totalScore).toBe(r.breakdown.reduce((s, b) => s + b.score, 0));
     expect(r.totalScore).toBeGreaterThan(55);
-    expect(r.improvements).toHaveLength(3);
+    expect(r.improvements.length).toBe(r.weaknesses.length);
     expect(r.disclaimer).toBe(SCORE_DISCLAIMER);
-    expect(r.disclaimer).toMatch(/not a scientifically validated predictor/);
+    expect(r.disclaimer).toMatch(/cannot predict .*sales/);
+    expect(r.weaknesses.length).toBeLessThanOrEqual(3);
   });
 
   it("flags unsubstantiated health claims, unsupported numbers, urgency and weak openings", () => {
