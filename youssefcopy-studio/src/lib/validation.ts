@@ -74,12 +74,16 @@ export type CampaignInput = z.infer<typeof campaignInputSchema>;
 export const campaignStatusSchema = z.enum(CAMPAIGN_STATUSES);
 export const emailStatusSchema = z.enum(EMAIL_STATUSES);
 
-/** Guided-writer body parts. The body is composed from these in order. */
+/** Human Mode working parts. The body is composed from problem/benefit/transition, in order. */
 export const emailSectionsSchema = z.object({
   problem: text(4000).default(""),
   benefit: text(4000).default(""),
   transition: text(4000).default(""),
+  painPoint: text(1000).default(""),
+  benefitPoint: text(1000).default(""),
+  outline: text(4000).default(""),
 });
+export const EMPTY_SECTIONS = emailSectionsSchema.parse({});
 export type EmailSections = z.infer<typeof emailSectionsSchema>;
 
 export const emailContentSchema = z.object({
@@ -91,7 +95,7 @@ export const emailContentSchema = z.object({
   cta: text(LIMITS.shortText).default(""),
   rationale: text(4000).default(""),
   researchRefs: z.array(text(500)).max(30).default([]),
-  sections: emailSectionsSchema.default({ problem: "", benefit: "", transition: "" }),
+  sections: emailSectionsSchema.default(EMPTY_SECTIONS),
 });
 export type EmailContent = z.infer<typeof emailContentSchema>;
 
