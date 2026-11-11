@@ -8,7 +8,7 @@ import { splitList, wordCount } from "../json";
 import type { BrandProfile, ResearchItem } from "../types";
 
 export const SCORE_DISCLAIMER =
-  "Heuristic editorial assessment based on transparent writing rules. It is not a scientifically validated predictor of opens, clicks, conversions or revenue.";
+  "Heuristic editorial assessment based on transparent writing rules. It is not a scientifically validated predictor and cannot predict opens, clicks, conversions, sales or revenue.";
 
 export interface AnalyzableEmail {
   subjectLines: string[];
@@ -18,6 +18,7 @@ export interface AnalyzableEmail {
   body: string;
   cta: string;
   segment?: string;
+  researchRefs?: string[];
 }
 
 export interface CategoryScore {
@@ -37,7 +38,8 @@ export type FlagKind =
   | "missing_audience"
   | "health_claim"
   | "misleading_subject"
-  | "generic_phrasing";
+  | "generic_phrasing"
+  | "unverified_quote";
 
 export interface Flag {
   kind: FlagKind;
@@ -46,11 +48,20 @@ export interface Flag {
   detail: string;
 }
 
+export interface Weakness {
+  title: string;
+  why: string;
+  suggestion: string;
+  severity: "high" | "medium" | "low";
+}
+
 export interface AnalysisResult {
   totalScore: number;
   breakdown: CategoryScore[];
   flags: Flag[];
   improvements: string[];
+  /** The three highest-priority weaknesses, each with a practical editorial fix. */
+  weaknesses: Weakness[];
   stats: { words: number; sentences: number; avgSentenceLength: number; readingMinutes: number };
   disclaimer: string;
 }
@@ -79,6 +90,8 @@ function overlapRatio(source: string[], target: Set<string>): number {
 }
 
 const clamp = (n: number, max: number) => Math.max(0, Math.min(max, Math.round(n)));
+// Audience, clarity and benefits are computed on a 20-point scale and reported out of 15.
+const scaled = (n: number) => clamp((Math.max(0, Math.min(20, n)) * 15) / 20, 15);
 
 const VAGUE = ["amazing", "incredible", "best ever", "awesome", "unbelievable", "perfect", "life-changing", "insane", "world-class"];
 const WEAK_OPENINGS = [/^i hope/i, /^we('| a)re (so )?(excited|thrilled|happy)/i, /^in today'?s/i, /^as you (may )?know/i, /^hi there,?$/i, /^just (checking|wanted)/i];
@@ -122,7 +135,7 @@ export function analyzeEmail(email: AnalyzableEmail, brand: BrandProfile, resear
     if ((email.segment ?? "").trim()) s += 4;
     else notes.push("No recommended audience segment set.");
     if (!fullBody.trim()) s = 0;
-    breakdown.push({ key: "audience", label: "Audience Relevance", score: clamp(s, 20), max: 20, notes });
+    breakdown.push({ key: "audience", label: "Audience Relevance", score: scaled(s), max: 15, notes });
     if (!(email.segment ?? "").trim() && audienceKw.size && overlap < 0.05 && fullBody.trim()) {
       flags.push({ kind: "missing_audience", label: "Missing audience context", severity: "medium", detail: "The email doesn't reference who it's for or their situation." });
     }
@@ -162,7 +175,7 @@ export function analyzeEmail(email: AnalyzableEmail, brand: BrandProfile, resear
         flags.push({ kind: "generic_phrasing", label: "Generic or formulaic phrasing", severity: "low", detail: generic.join(", ") });
       }
     }
-    breakdown.push({ key: "clarity", label: "Clarity", score: clamp(s, 20), max: 20, notes });
+    breakdown.push({ key: "clarity", label: "Clarity", score: scaled(s), max: 15, notes });
   }
 
   // Benefits & value (20)
@@ -177,7 +190,7 @@ export function analyzeEmail(email: AnalyzableEmail, brand: BrandProfile, resear
     if (benefitKw.size && overlap < 0.05) notes.push("The email doesn't connect to the brand's verified benefits.");
     if (benefitLanguage < 2) notes.push("Translate features into outcomes (“so you can…”, “which means…”).");
     if (!fullBody.trim()) s = 0;
-    breakdown.push({ key: "benefits", label: "Benefits & Value", score: clamp(s, 20), max: 20, notes });
+    breakdown.push({ key: "benefits", label: "Benefits & Value", score: scaled(s), max: 15, notes });
   }
 
   // Persuasiveness (15)
@@ -313,12 +326,52 @@ export function analyzeEmail(email: AnalyzableEmail, brand: BrandProfile, resear
     flags.push({ kind: "misleading_subject", label: "Missing subject line", severity: "medium", detail: "No subject line selected." });
   }
 
+  // Quotes that look like testimonials must exist in client-provided or verified evidence.
+  const quotes = (fullBody.match(/[“"]([^”"]{20,300})[”"]/g) ?? []).map((q) => q.slice(1, -1).trim());
+  const unverifiedQuotes = quotes.filter((q) => !evidenceText.includes(q.toLowerCase().slice(0, 40)));
+  if (unverifiedQuotes.length) {
+    flags.push({
+      kind: "unverified_quote",
+      label: "Unverified quote or testimonial",
+      severity: "high",
+      detail: `Quoted text not found in testimonials or verified research: “${unverifiedQuotes[0].slice(0, 80)}”.`,
+    });
+  }
+
+  // Factual accuracy (15): deductions for claims the evidence doesn't support.
+  {
+    const notes: string[] = [];
+    let s = 15;
+    const health = flags.filter((f) => f.kind === "health_claim").length;
+    const unsupported = flags.filter((f) => f.kind === "unsupported_claim").length;
+    if (health) {
+      s -= Math.min(9, health * 6);
+      notes.push(`${health} health or medical-style claim(s) without documented evidence.`);
+    }
+    if (unsupported) {
+      s -= Math.min(8, unsupported * 4);
+      notes.push("Figures or offers that aren't in the brand profile or verified research.");
+    }
+    if (unverifiedQuotes.length) {
+      s -= 4;
+      notes.push("Quoted customer language that isn't in your verified evidence.");
+    }
+    if (email.researchRefs && email.researchRefs.length === 0 && fullBody.trim()) {
+      s -= 2;
+      notes.push("No research references linked — add the facts this email relies on.");
+    }
+    if (!fullBody.trim()) s = 0;
+    breakdown.push({ key: "factual", label: "Factual Accuracy", score: clamp(s, 15), max: 15, notes });
+  }
+
   const totalScore = breakdown.reduce((sum, c) => sum + c.score, 0);
+  const weaknesses = prioritizeWeaknesses(breakdown, flags);
   return {
     totalScore,
     breakdown,
     flags,
-    improvements: prioritizeImprovements(breakdown, flags),
+    improvements: weaknesses.map((w) => w.suggestion),
+    weaknesses,
     stats: {
       words,
       sentences: sentences.length,
@@ -358,6 +411,7 @@ const FLAG_ADVICE: Record<FlagKind, string> = {
   missing_audience: "Name the reader's situation in the first lines and set a recommended segment.",
   repetitive_language: "Vary repeated phrases and sentence openings.",
   generic_phrasing: "Replace generic phrases with concrete details from the brand research.",
+  unverified_quote: "Only quote reviews that are stored as verified research or in the client-provided testimonials — otherwise remove the quote.",
 };
 
 const CATEGORY_ADVICE: Record<string, string> = {
@@ -368,22 +422,29 @@ const CATEGORY_ADVICE: Record<string, string> = {
   cta: "Use one clear, verb-led CTA that matches the email objective.",
   specificity: "Swap vague superlatives for concrete product details.",
   voice: "Align punctuation and wording with the brand tone and restrictions.",
+  factual: "Check every claim against the brief: link research references and remove anything the evidence doesn't support.",
 };
 
-function prioritizeImprovements(breakdown: CategoryScore[], flags: Flag[]): string[] {
-  const out: string[] = [];
+/** Top three weaknesses: serious flags first, then the weakest categories (by share of their maximum). */
+function prioritizeWeaknesses(breakdown: CategoryScore[], flags: Flag[]): Weakness[] {
+  const out: Weakness[] = [];
+  const seen = new Set<string>();
   const severityOrder = { high: 0, medium: 1, low: 2 } as const;
   const sortedFlags = [...flags].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
   for (const f of sortedFlags) {
     if (f.severity === "low") continue;
-    const advice = FLAG_ADVICE[f.kind];
-    if (!out.includes(advice)) out.push(advice);
+    const suggestion = FLAG_ADVICE[f.kind];
+    if (seen.has(suggestion)) continue;
+    seen.add(suggestion);
+    out.push({ title: f.label, why: f.detail, suggestion, severity: f.severity });
     if (out.length === 3) return out;
   }
-  const weakest = [...breakdown].sort((a, b) => a.score / a.max - b.score / b.max);
+  const weakest = [...breakdown].filter((c) => c.score < c.max).sort((a, b) => a.score / a.max - b.score / b.max);
   for (const c of weakest) {
-    const advice = CATEGORY_ADVICE[c.key];
-    if (advice && !out.includes(advice)) out.push(advice);
+    const suggestion = CATEGORY_ADVICE[c.key];
+    if (!suggestion || seen.has(suggestion)) continue;
+    seen.add(suggestion);
+    out.push({ title: `${c.label}: ${c.score}/${c.max}`, why: c.notes[0] ?? "Scored below its maximum.", suggestion, severity: c.score / c.max < 0.5 ? "medium" : "low" });
     if (out.length === 3) break;
   }
   return out;

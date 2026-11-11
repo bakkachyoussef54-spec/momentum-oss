@@ -27,6 +27,7 @@ export const DEMO_BRAND: BrandInput = {
     testimonials: "",
     objections: "Sleep masks feel hot or uncomfortable\nIt will slip off during the night\nIs it worth paying more than a drugstore mask?",
     pricing: "$34. Free returns within 30 days (fictional demo policy).",
+    links: "https://example.com/lunora/contour-mask",
   },
 };
 

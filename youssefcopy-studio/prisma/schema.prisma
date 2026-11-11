@@ -45,6 +45,7 @@ model Product {
   testimonials   String   @default("")
   objections     String   @default("")
   pricing        String   @default("")
+  links          String   @default("") // product page URLs, one per line
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -114,6 +115,7 @@ model CampaignEmail {
   cta               String   @default("")
   rationale         String   @default("")
   researchRefs      String   @default("[]") // JSON string[]
+  sections          String   @default("{}") // JSON EmailSections (guided writer: problem, benefit, transition)
   contentOrigin     String   @default("empty") // empty | manual | template | ai | ai_edited
   status            String   @default("draft") // draft | in_review | approved
   approvedVersionId String?
@@ -139,6 +141,7 @@ model EmailDraftVersion {
   cta             String   @default("")
   rationale       String   @default("")
   researchRefs    String   @default("[]")
+  sections        String   @default("{}")
   origin          String   @default("manual") // manual | template | ai | ai_edited | restored | approved
   label           String   @default("")
   aiModel         String   @default("")
