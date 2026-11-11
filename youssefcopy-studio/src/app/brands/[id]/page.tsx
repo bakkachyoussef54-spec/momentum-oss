@@ -28,7 +28,7 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
     restrictions: brand.restrictions,
     researchNotes: brand.researchNotes,
     product: p
-      ? { name: p.name, category: p.category, description: p.description, targetAudience: p.targetAudience, painPoints: p.painPoints, desires: p.desires, features: p.features, benefits: p.benefits, usp: p.usp, testimonials: p.testimonials, objections: p.objections, pricing: p.pricing }
+      ? { name: p.name, category: p.category, description: p.description, targetAudience: p.targetAudience, painPoints: p.painPoints, desires: p.desires, features: p.features, benefits: p.benefits, usp: p.usp, testimonials: p.testimonials, objections: p.objections, pricing: p.pricing, links: p.links }
       : { ...EMPTY_PRODUCT },
   };
 
