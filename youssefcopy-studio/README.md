@@ -92,20 +92,31 @@ npm run dev
 - **To roll back:** stop the app, copy the file from `backups\` over `dev.db`, then check out the previous version.
 - **Do not run `prisma migrate reset` or `prisma migrate dev`.** They are development commands that can delete data. `db:migrate` runs `prisma migrate deploy`, which only applies pending migrations.
 
-### Enabling AI (optional)
+### Enabling AI Mode (optional)
 
-Edit `.env`, then restart `npm run dev`:
+AI Mode is optional; Human Mode never needs it. Choose a provider in **Settings → AI Mode provider**, then click **Save & test connection**. The test only lists models, so it costs nothing.
+
+**Free and local: Ollama on Windows (no key, no subscription)**
+
+1. Install Ollama from https://ollama.com/download (Windows installer). It runs in the background at `http://127.0.0.1:11434`.
+2. In PowerShell, download a small model: `ollama pull qwen3:1.7b` (about 1.4 GB; works on modest PCs).
+3. In the app, open Settings and choose **Ollama (local)**. Model `qwen3:1.7b` and the default URL are pre-filled. Click **Save & test connection**.
+
+If Ollama is not installed or not running, the app tells you exactly that and Human Mode keeps working. Small local models can take a minute per email on a laptop CPU. For better copy, use a larger model if your PC allows it (e.g. `qwen3:8b`).
+
+**Paid APIs (OpenAI / Anthropic / OpenAI-compatible)**
+
+Put the key in `.env` and restart `npm run dev`, then choose the provider in Settings:
 
 ```env
-AI_PROVIDER=openai          # or anthropic, openai-compatible
-AI_MODEL=gpt-4.1-mini
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-...        # OpenAI
+ANTHROPIC_API_KEY=...        # Anthropic
 ```
 
-- Keys are read on the server only.
-- The app calls exactly the provider you configure and never falls back to another one.
-- Research is sent only when you click a generate or AI action.
-- Set `AI_INPUT_COST_PER_MTOK` / `AI_OUTPUT_COST_PER_MTOK` to see cost estimates.
+- **Keys are only read on the server.** The Settings page shows whether a key is set, never its value.
+- **No fallback.** The app calls exactly the provider you choose and never switches to another one.
+- **Research only leaves your machine on request.** It is sent only when you click a generate or AI action (and with Ollama it never leaves your machine).
+- **Generation preferences.** Tone, length, framework and creativity can be set in Settings and adjusted per request in AI Mode.
 
 ## Scripts
 
@@ -133,7 +144,7 @@ src/lib/                framework-free domain logic (unit-tested)
   workflow/             workflow step status and package review checks
   strategy/             Stages C–D playbooks, framework selection, campaign brief
   analyzer/             Stage F heuristic scoring and flags
-  ai/                   provider-agnostic adapter (OpenAI, Anthropic, OpenAI-compatible), prompts, schemas
+  ai/                   provider-agnostic adapter (OpenAI, Anthropic, OpenAI-compatible, Ollama), prompts, JSON schemas, connection test
   export/               Markdown, plain-text and DOCX builders
   services/             Prisma-backed data access used by pages, actions and routes
 src/app/                pages (server components), actions.ts (server actions), api/ (AI, export, backup)
@@ -141,22 +152,30 @@ src/components/         UI; components/ui holds shadcn primitives
 tests/                  unit, integration (real SQLite + migrations) and e2e (Playwright)
 ```
 
-- **AI flow.** The browser calls `POST /api/ai/generate` or `/api/ai/revise`. The route passes `request.signal` to the provider call, combined with a timeout. The response is validated with Zod, and the previous draft is snapshotted before the new content is saved. Invalid AI output is rejected and nothing is saved.
+- **AI flow.** The browser calls `POST /api/ai/generate`, `/api/ai/revise` or `/api/ai/review`. Settings (provider, model, local URL, preferences) are stored in `AppSetting` — never keys. The route passes `request.signal` to the provider call, combined with a timeout. The response is validated with Zod, and the previous draft is snapshotted before the new content is saved. Invalid AI output is rejected and nothing is saved.
 - **JSON-shaped columns** are stored as TEXT and validated with Zod on read.
 
 ## Test results (at time of writing)
 
 - `npm run typecheck`: pass
 - `npm run lint`: pass (0 problems)
-- `npm test`: 58 tests across 6 files, all passing. Covers the analyzer (including factual accuracy and weaknesses), planning, structured brief, rule-based writing suggestions, workflow status, compliance, templates, AI adapter (mocked fetch), exports, backups made before V2, and full service workflows on a real migrated SQLite DB.
+- `npm test`: 82 tests across 8 files, all passing.
+  - **Real database, mocked AI:** these run against a real migrated SQLite database, but every AI provider call is **mocked** (stubbed HTTP). No real model is called.
+  - **Coverage:** analyzer, planning, structured brief, the 12-step Human Mode, provider settings resolution, the Ollama/OpenAI/Anthropic adapters, connection tests, AI generation and revision via the services, the approved-draft lock, insufficient-research refusal, cancellation, exports, and backups.
 - `npm run build`: pass
-- `npm run test:e2e`: 5 tests, all passing. Covers the V2 guided three-email flow without an API key (intake → research → structured brief → one-click plan → guided writing ×3 → approve → review → Markdown export → dashboard 8/8), every nav page, the full sleep-mask welcome-series workflow (create, edit, persist, research, campaign, template, autosave, version, reload, approve, analyze, export), missing inputs, and the mobile layout.
+- `npm run test:e2e`: 6 tests, all passing. In AI Mode the app talks to `tests/e2e/mock-ollama.mjs`, a **mock** of the Ollama API with canned answers. The tests cover:
+  - every navigation page;
+  - the V1 sleep-mask workflow;
+  - the V2 guided three-email flow without an API key;
+  - the Hybrid flow: configure Ollama, unreachable-server error, Human Mode → AI Mode switch, generate, compare/accept/reject, approval lock, version restore, and AI review;
+  - missing inputs and the mobile layout.
+- **Real local AI (not mocked):** `OLLAMA_LIVE=1 npm test -- tests/live` runs against a running Ollama server. It passed in the development sandbox with Ollama 0.40.16 and `qwen3:1.7b` on a 2-vCPU Linux machine: a schema-valid draft in ~23 s, no health claims flagged, and 3 CTA options. **It has not been run on your Windows PC.** Run it there after installing Ollama to confirm.
 
 ## Limitations & deployment requirements
 
 - **Single-user and unauthenticated.** It is designed to run on your own machine. **Do not deploy it publicly** without adding authentication and authorization (for example Auth.js) and HTTPS.
 - **SQLite on local disk.** Serverless hosts with ephemeral filesystems will lose data. Deploying would need a persistent volume, or a move to Postgres (a new Prisma datasource and migrations).
-- **Live AI generation was not exercised against a real provider in this build** (no credentials were available). The adapter is unit-tested with mocked HTTP responses. Verify with your own key before relying on it.
+- **Paid providers (OpenAI, Anthropic) were not called for real.** No keys were available, so those adapters are only tested with mocked HTTP. Ollama was tested for real in the sandbox (see above). Small local models write simpler copy than large hosted models, so always edit AI-assisted drafts.
 - **Quality scores are heuristic** editorial guidance. They cannot predict opens, clicks, sales or revenue.
 - **Rule-based suggestions** in the guided writer are assembled from your inputs by fixed templates. They are a starting point to edit, not finished copy, and they are never presented as AI output.
 - **Document import** accepts plain text only (`.txt/.md/.csv`). For DOCX/PDF briefs, paste the text instead.
