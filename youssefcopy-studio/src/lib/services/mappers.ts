@@ -1,7 +1,7 @@
 import { parseJson, parseStringArray } from "../json";
-import { emailSectionsSchema, type EmailSections } from "../validation";
+import { EMPTY_SECTIONS, emailSectionsSchema, type EmailSections } from "../validation";
 
-const EMPTY_SECTIONS: EmailSections = { problem: "", benefit: "", transition: "" };
+
 
 export function parseSections(raw: string | undefined): EmailSections {
   return parseJson(raw, emailSectionsSchema, EMPTY_SECTIONS);

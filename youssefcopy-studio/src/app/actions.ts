@@ -8,10 +8,11 @@ import * as campaigns from "@/lib/services/campaigns";
 import * as emails from "@/lib/services/emails";
 import * as templates from "@/lib/services/templates";
 import * as demo from "@/lib/services/demo";
-import { setSetting, logActivity } from "@/lib/services/settings";
+import { setSetting, logActivity, saveAiSettings } from "@/lib/services/settings";
+import { testAiConnection } from "@/lib/services/ai";
 import { CAMPAIGN_TYPES, LIMITS, type CampaignType } from "@/lib/constants";
 
-export type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 
 const SAFE_PREFIXES = ["Brand not found", "Campaign not found", "Email not found", "Confirmation text", "Cannot approve", "Built-in templates", "Campaign brief"];
 
@@ -22,6 +23,7 @@ async function run<T>(fn: () => Promise<T>, paths: string[] = []): Promise<Actio
     return { ok: true, data };
   } catch (err) {
     if (err instanceof ZodError) return { ok: false, error: formatZodError(err) };
+    if (err instanceof emails.ApprovedLockError) return { ok: false, error: err.message, code: "approved_locked" };
     const message = err instanceof Error ? err.message : "";
     if (SAFE_PREFIXES.some((p) => message.startsWith(p))) return { ok: false, error: message };
     console.error("[action]", err);
@@ -106,14 +108,14 @@ export async function saveDraftAction(emailId: string, content: unknown, meta?: 
 export async function createVersionAction(emailId: string, label: string) {
   return run(async () => (await emails.createVersion(emailId, label)).versionNumber, ["/editor"]);
 }
-export async function restoreVersionAction(emailId: string, versionId: string) {
-  return run(async () => (await emails.restoreVersion(emailId, versionId)).versionNumber, ["/"]);
+export async function restoreVersionAction(emailId: string, versionId: string, confirmApproved = false) {
+  return run(async () => (await emails.restoreVersion(emailId, versionId, { confirmApproved })).versionNumber, ["/"]);
 }
-export async function applyTemplateAction(emailId: string, templateId: string) {
-  return run(async () => (await emails.applyTemplateToEmail(emailId, templateId)).versionNumber, ["/"]);
+export async function applyTemplateAction(emailId: string, templateId: string, confirmApproved = false) {
+  return run(async () => (await emails.applyTemplateToEmail(emailId, templateId, { confirmApproved })).versionNumber, ["/"]);
 }
-export async function applyContentAction(emailId: string, content: unknown, label: string) {
-  return run(async () => (await emails.replaceContent(emailId, content, { origin: "ai_edited", label: label.slice(0, 120) })).versionNumber, ["/"]);
+export async function applyContentAction(emailId: string, content: unknown, label: string, confirmApproved = false) {
+  return run(async () => (await emails.replaceContent(emailId, content, { origin: "ai_edited", label: label.slice(0, 120), confirmApproved })).versionNumber, ["/"]);
 }
 export async function setEmailStatusAction(emailId: string, status: string) {
   return run(async () => (await emails.setEmailStatus(emailId, status)).status, ["/"]);
@@ -143,4 +145,14 @@ export async function loadDemoAction() {
 }
 export async function removeDemoAction() {
   return run(() => demo.removeDemoData(), ["/"]);
+}
+export async function saveAiSettingsAction(input: unknown) {
+  return run(async () => {
+    await saveAiSettings(input);
+    return null;
+  }, ["/"]);
+}
+/** Lists models on the configured provider — no text is generated, so no tokens are spent. */
+export async function testAiConnectionAction() {
+  return run(() => testAiConnection());
 }

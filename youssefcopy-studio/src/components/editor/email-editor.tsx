@@ -72,31 +72,16 @@ export interface EditorProps {
   brand: BrandProfile;
   research: ResearchItem[];
   templates: { id: string; name: string; category: string; framework: string }[];
-  ai: { available: boolean; reason: string; model: string | null };
+  ai: { available: boolean; reason: string; model: string | null; providerLabel: string | null; isLocal: boolean };
+  aiDefaults: AiPrefs;
   plan: AssistContext["plan"];
 }
 
 const clockNow = () => Date.now();
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
-
-const AI_ACTIONS = [
-  { id: "improve_clarity", label: "Improve Clarity" },
-  { id: "strengthen_hook", label: "Strengthen Hook" },
-  { id: "more_conversational", label: "Make More Conversational" },
-  { id: "focus_benefits", label: "Focus on Benefits" },
-  { id: "improve_cta", label: "Improve CTA" },
-  { id: "shorten", label: "Shorten Email" },
-  { id: "subject_lines", label: "Generate Alternative Subject Lines" },
-] as const;
-
-interface Proposal {
-  action: string;
-  label: string;
-  changes: Partial<Pick<EditorContent, "subjectLines" | "previewText" | "hook" | "body" | "cta">>;
-  summary: string;
-  usage?: { model: string; inputTokens: number | null; outputTokens: number | null; estimatedCostUsd: number | null };
-}
+type Mode = "human" | "ai";
+type View = "write" | "freeform" | "desktop" | "mobile" | "text";
 
 export function plainTextEmail(c: EditorContent): string {
   const subject = c.subjectLines[c.selectedSubject] ?? "";
@@ -112,17 +97,29 @@ export function EmailEditor(props: EditorProps) {
     ...email.content,
     subjectLines: email.content.subjectLines.length ? email.content.subjectLines : ["", "", ""],
   }));
-  const [meta, setMeta] = useState({ objective: email.objective, segment: email.segment });
+  const [meta, setMeta] = useState({ objective: email.objective, segment: email.segment, framework: email.framework });
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [view, setView] = useState<"guided" | "edit" | "desktop" | "mobile" | "text">(email.contentOrigin === "empty" || email.contentOrigin === "guided" ? "guided" : "edit");
+  const [mode, setModeState] = useState<Mode>(email.contentOrigin === "ai" || email.contentOrigin === "ai_edited" ? "ai" : "human");
+  const [view, setView] = useState<View>("write");
   const [pending, start] = useTransition();
   const [confirmRestore, setConfirmRestore] = useState<EditorProps["versions"][number] | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [confirmTemplate, setConfirmTemplate] = useState(false);
-  const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [aiBusy, setAiBusy] = useState<string | null>(null);
-  const aiAbort = useRef<AbortController | null>(null);
+  const [proposal, setProposal] = useState<AiProposal | null>(null);
+  const [pickedOption, setPickedOption] = useState(0);
+  const approved = email.status === "approved";
+
+  useEffect(() => {
+    const saved = localStorage.getItem("ycs.mode");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restore persisted mode preference after mount
+    if ((saved === "human" || saved === "ai") && email.contentOrigin !== "ai" && email.contentOrigin !== "ai_edited") setModeState(saved);
+  }, [email.contentOrigin]);
+  const setMode = (m: Mode) => {
+    localStorage.setItem("ycs.mode", m);
+    setModeState(m);
+    setView("write");
+  };
 
   // Undo/redo of editor state, coalescing rapid keystrokes.
   const past = useRef<EditorContent[]>([]);
@@ -259,7 +256,7 @@ export function EmailEditor(props: EditorProps) {
 
   const restore = (v: EditorProps["versions"][number]) =>
     withFlush(async () => {
-      const res = await restoreVersionAction(email.id, v.id);
+      const res = await restoreVersionAction(email.id, v.id, approved);
       setConfirmRestore(null);
       if (!res.ok) return void toast.error(res.error);
       toast.success(`Restored v${v.versionNumber}. Your previous draft was kept in history.`);
@@ -268,7 +265,7 @@ export function EmailEditor(props: EditorProps) {
 
   const applyTemplate = () =>
     withFlush(async () => {
-      const res = await applyTemplateAction(email.id, templateId);
+      const res = await applyTemplateAction(email.id, templateId, approved);
       setConfirmTemplate(false);
       if (!res.ok) return void toast.error(res.error);
       toast.success("Template applied. Previous draft saved in version history.");
@@ -283,29 +280,9 @@ export function EmailEditor(props: EditorProps) {
       router.refresh();
     });
 
-  const runAi = async (action: (typeof AI_ACTIONS)[number]) => {
-    if (!ai.available) return;
-    aiAbort.current?.abort();
-    const controller = new AbortController();
-    aiAbort.current = controller;
-    setAiBusy(action.id);
-    try {
-      const res = await fetch("/api/ai/revise", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ emailId: email.id, action: action.id, current: { subjectLines: content.subjectLines, previewText: content.previewText, hook: content.hook, body: content.body, cta: content.cta } }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
-      if (!res.ok) return void toast.error(data.error ?? "AI request failed");
-      const { changeSummary, ...changes } = data.proposal as Proposal["changes"] & { changeSummary: string };
-      setProposal({ action: action.id, label: action.label, changes, summary: changeSummary, usage: data.usage });
-    } catch (err) {
-      if ((err as Error).name === "AbortError") toast.info("AI request cancelled");
-      else toast.error("Could not reach the server");
-    } finally {
-      setAiBusy(null);
-    }
+  const showProposal = (p: AiProposal) => {
+    setPickedOption(0);
+    setProposal(p);
   };
 
   const applyProposal = () => {
@@ -315,15 +292,16 @@ export function EmailEditor(props: EditorProps) {
       if (proposal.action === "subject_lines") merged.subjectLines = [...merged.subjectLines.filter((s) => s.trim()), ...proposal.changes.subjectLines].slice(0, 10);
       else merged.subjectLines = proposal.changes.subjectLines;
     }
-    for (const k of ["previewText", "hook", "body", "cta"] as const) {
+    for (const k of ["previewText", "hook", "body", "cta", "rationale"] as const) {
       const v = proposal.changes[k];
       if (typeof v === "string" && v.trim()) merged[k] = v;
     }
+    if (proposal.options) merged[proposal.options.target] = proposal.options.values[pickedOption] ?? merged[proposal.options.target];
     withFlush(async () => {
-      const res = await applyContentAction(email.id, merged, `AI revision: ${proposal.label}`);
+      const res = await applyContentAction(email.id, merged, `AI-assisted: ${proposal.label}`, approved);
       setProposal(null);
       if (!res.ok) return void toast.error(res.error);
-      toast.success("AI suggestion applied. The previous draft is in version history.");
+      toast.success("AI suggestion accepted. The previous draft is in version history.");
       router.refresh();
     });
   };
@@ -438,12 +416,38 @@ export function EmailEditor(props: EditorProps) {
 
         {/* Center: editor */}
         <section className="min-w-0 space-y-5" aria-label="Email content">
+          <div role="radiogroup" aria-label="Writing mode" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" data-testid="mode-switcher">
+            {(
+              [
+                ["human", "Human Mode", UserPen, "Guided writing assistant · works offline"],
+                ["ai", "AI Mode", Bot, ai.available ? `${ai.providerLabel} · ${ai.model}` : "Not connected — set up in Settings"],
+              ] as const
+            ).map(([id, label, Icon, hint]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={mode === id}
+                onClick={() => setMode(id)}
+                data-testid={`mode-${id}`}
+                className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all", mode === id ? "bg-background shadow-sm ring-1 ring-primary/40" : "text-muted-foreground hover:text-foreground")}
+              >
+                <span className={cn("grid size-7 shrink-0 place-items-center rounded-md", mode === id ? "bg-primary text-white" : "bg-background")}>
+                  <Icon className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">{hint}</span>
+                </span>
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div role="tablist" aria-label="View mode" className="flex gap-1 rounded-lg bg-muted p-1 text-xs">
+            <div role="tablist" aria-label="View mode" className="flex flex-wrap gap-1 rounded-lg bg-muted p-1 text-xs">
               {(
                 [
-                  ["guided", "Guided", ListChecks],
-                  ["edit", "Freeform", PenLine],
+                  ["write", mode === "human" ? "Guided" : "AI writer", mode === "human" ? ListChecks : Sparkles],
+                  ["freeform", "Freeform", PenLine],
                   ["desktop", "Inbox preview", Monitor],
                   ["mobile", "Mobile", Smartphone],
                   ["text", "Plain text", Text],
@@ -472,19 +476,41 @@ export function EmailEditor(props: EditorProps) {
             </div>
           </div>
 
-          {view === "guided" ? (
+          {view === "write" && mode === "human" ? (
             <GuidedWriter
-              content={content}
+              state={{ ...content, objective: meta.objective, segment: meta.segment, framework: meta.framework, status: email.status }}
               ctx={assistCtx}
+              brandId={brandId}
               bodyLinked={bodyLinked}
+              review={reviewInfo}
+              busy={pending}
               onChange={(patch) => update(patch)}
+              onMeta={updateMeta}
               onSections={updateSections}
               onAssist={() => {
                 assisted.current = true;
               }}
               onRebuildBody={rebuildBody}
+              onApprove={() => setStatus("approved")}
             />
-          ) : view === "edit" ? (
+          ) : view === "write" || view === "freeform" ? (
+            <>
+            {view === "write" && (
+              <AiWorkbench
+                emailId={email.id}
+                ai={ai}
+                approved={approved}
+                hasContent={Boolean(content.body.trim() || content.hook.trim())}
+                defaults={aiDefaults}
+                getCurrent={() => {
+                  const c = latest.current.content;
+                  return { subjectLines: c.subjectLines, previewText: c.previewText, hook: c.hook, body: c.body, cta: c.cta, rationale: c.rationale };
+                }}
+                beforeRequest={() => (saveState === "saved" ? Promise.resolve(true) : persist())}
+                onProposal={showProposal}
+                onGenerated={() => router.refresh()}
+              />
+            )}
             <div className="space-y-5 rounded-2xl border border-border bg-card p-5 sm:p-6">
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Subject lines <span className="font-normal text-muted-foreground">— select the primary option</span></legend>
@@ -566,6 +592,7 @@ export function EmailEditor(props: EditorProps) {
                 <Textarea id="rationale" rows={3} value={content.rationale} onChange={(e) => update({ rationale: e.target.value })} placeholder="Why this angle, structure and CTA — included in the client package." />
               </div>
             </div>
+            </>
           ) : view === "text" ? (
             <pre className="whitespace-pre-wrap rounded-2xl border border-border bg-card p-6 font-mono text-sm leading-6">{plainTextEmail(content)}</pre>
           ) : (
@@ -681,27 +708,15 @@ export function EmailEditor(props: EditorProps) {
             </details>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card p-4">
-            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Sparkles className="size-3.5" /> AI actions
+          <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground">
+            <p className="mb-1 flex items-center gap-1.5 font-semibold uppercase tracking-wider">
+              {mode === "human" ? <UserPen className="size-3.5" /> : <Bot className="size-3.5" />} {mode === "human" ? "Human Mode" : "AI Mode"}
             </p>
-            {ai.available ? (
-              <p className="mb-3 text-xs text-muted-foreground">Sends this draft and the brand’s verified research to {ai.model}. You review every suggestion before it’s applied.</p>
-            ) : (
-              <p className="mb-3 text-xs text-muted-foreground">Unavailable: {ai.reason} Everything else in the editor works without AI.</p>
-            )}
-            <div className="flex flex-wrap gap-1.5">
-              {AI_ACTIONS.map((a) => (
-                <Button key={a.id} variant="outline" size="xs" disabled={!ai.available || Boolean(aiBusy) || pending} onClick={() => runAi(a)}>
-                  {aiBusy === a.id && <Loader2 className="animate-spin" />} {a.label}
-                </Button>
-              ))}
-            </div>
-            {aiBusy && (
-              <Button variant="ghost" size="xs" className="mt-2" onClick={() => aiAbort.current?.abort()}>
-                <X /> Cancel request
-              </Button>
-            )}
+            {mode === "human"
+              ? "You write; the studio coaches and offers rule-based suggestions. Switch to AI Mode any time — your draft stays exactly as it is."
+              : ai.available
+                ? `AI suggestions from ${ai.model} are shown side by side before anything changes, and are labelled AI-assisted.`
+                : `AI is not connected: ${ai.reason}`}
           </div>
         </aside>
       </div>
@@ -710,7 +725,10 @@ export function EmailEditor(props: EditorProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Restore version {confirmRestore?.versionNumber}?</DialogTitle>
-            <DialogDescription>Your current draft will be saved as a new version first, so nothing is lost.</DialogDescription>
+            <DialogDescription>
+              Your current draft will be saved as a new version first, so nothing is lost.
+              {approved && " This email is approved: restoring changes its working draft, while the approved version stays in exports until you approve again."}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmRestore(null)}>Cancel</Button>
@@ -727,6 +745,7 @@ export function EmailEditor(props: EditorProps) {
             <DialogTitle>Apply template?</DialogTitle>
             <DialogDescription>
               This replaces the subject lines, preview text, hook, body and CTA with “{templates.find((t) => t.id === templateId)?.name}”, filled from the brand profile. Your current draft is saved in version history first. Unknown details appear as [placeholders].
+              {approved && " This email is approved: the approved version stays in exports until you approve again."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -739,36 +758,59 @@ export function EmailEditor(props: EditorProps) {
       </Dialog>
 
       <Dialog open={Boolean(proposal)} onOpenChange={(o) => !o && setProposal(null)}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-3xl" data-testid="ai-compare">
           <DialogHeader>
-            <DialogTitle>AI suggestion: {proposal?.label}</DialogTitle>
+            <DialogTitle>AI-assisted suggestion: {proposal?.label}</DialogTitle>
             <DialogDescription>
-              {proposal?.summary || "Review the proposed changes."} Nothing changes until you apply it.
+              {proposal?.summary || "Compare before and after."} Nothing changes until you accept.
               {proposal?.usage?.inputTokens != null && ` · ${proposal.usage.inputTokens + (proposal.usage.outputTokens ?? 0)} tokens`}
-              {proposal?.usage?.estimatedCostUsd != null && ` · ~$${proposal.usage.estimatedCostUsd.toFixed(4)}`}
+              {proposal?.usage?.estimatedCostUsd != null && proposal.usage.estimatedCostUsd > 0 && ` · ~$${proposal.usage.estimatedCostUsd.toFixed(4)}`}
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[55vh] space-y-4 overflow-y-auto">
+            {proposal?.options && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg bg-muted/60 p-3 text-sm">
+                  <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Before</p>
+                  <p className="whitespace-pre-line text-muted-foreground">{content[proposal.options.target] || "(empty)"}</p>
+                </div>
+                <div role="radiogroup" aria-label="Choose an option" className="space-y-2">
+                  {proposal.options.values.map((o, i) => (
+                    <button key={i} type="button" role="radio" aria-checked={pickedOption === i} onClick={() => setPickedOption(i)} className={cn("w-full rounded-lg p-3 text-left text-sm ring-1", pickedOption === i ? "bg-primary/10 ring-primary" : "ring-border hover:ring-primary/50")}>
+                      <span className="mb-0.5 block text-xs uppercase tracking-wider text-primary">After · option {i + 1}</span>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {proposal &&
-              (Object.entries(proposal.changes) as [keyof Proposal["changes"], unknown][])
+              (Object.entries(proposal.changes) as [keyof AiProposal["changes"], unknown][])
                 .filter(([, v]) => (Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim()))
                 .map(([k, v]) => (
                   <div key={k} className="grid gap-2 sm:grid-cols-2">
                     <div className="rounded-lg bg-muted/60 p-3 text-sm">
-                      <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Current {k}</p>
-                      <p className="whitespace-pre-line text-muted-foreground">{Array.isArray(content[k]) ? (content[k] as string[]).join("\n") : (content[k] as string)}</p>
+                      <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Before · {k}</p>
+                      <p className="whitespace-pre-line text-muted-foreground">{Array.isArray(content[k]) ? (content[k] as string[]).filter(Boolean).join("\n") || "(empty)" : (content[k] as string) || "(empty)"}</p>
                     </div>
                     <div className="rounded-lg bg-primary/10 p-3 text-sm ring-1 ring-primary/20">
-                      <p className="mb-1 text-xs uppercase tracking-wider text-primary">Suggested {k}</p>
+                      <p className="mb-1 text-xs uppercase tracking-wider text-primary">After · {k}</p>
                       <p className="whitespace-pre-line">{Array.isArray(v) ? v.join("\n") : String(v)}</p>
                     </div>
                   </div>
                 ))}
+            {proposal && proposal.missingInformation.length > 0 && (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                <p className="font-medium">Missing information reported by the AI:</p>
+                <ul className="list-disc pl-5 text-muted-foreground">{proposal.missingInformation.map((m) => <li key={m}>{m}</li>)}</ul>
+              </div>
+            )}
+            {approved && <p className="text-xs text-warning">This email is approved. Accepting changes its working draft; the approved version stays in exports until you approve again.</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setProposal(null)}>Discard</Button>
-            <Button onClick={applyProposal} disabled={pending}>
-              {pending && <Loader2 className="animate-spin" />} {proposal?.action === "subject_lines" ? "Add subject lines" : "Apply suggestion"}
+            <Button variant="outline" onClick={() => setProposal(null)} data-testid="ai-reject">Reject</Button>
+            <Button onClick={applyProposal} disabled={pending} data-testid="ai-accept">
+              {pending && <Loader2 className="animate-spin" />} {proposal?.action === "subject_lines" ? "Add subject lines" : "Accept"}
             </Button>
           </DialogFooter>
         </DialogContent>
