@@ -24,7 +24,7 @@ describe("AI config", () => {
   });
 });
 
-const openaiConfig = { provider: "openai" as const, model: "m", apiKey: "k", baseUrl: "https://api.test/v1", timeoutMs: 5000, inputCostPerMTok: null, outputCostPerMTok: null };
+const openaiConfig = { provider: "openai" as const, model: "m", apiKey: "k", baseUrl: "https://api.test/v1", timeoutMs: 5000, temperature: null, inputCostPerMTok: null, outputCostPerMTok: null };
 
 describe("provider adapter", () => {
   it("calls OpenAI-style chat completions with JSON mode and returns usage", async () => {
