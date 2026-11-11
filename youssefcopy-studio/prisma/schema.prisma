@@ -1,0 +1,204 @@
+// YoussefCopy AI Email Studio — relational data model (SQLite for local use).
+// JSON-shaped columns are stored as TEXT and validated with Zod in src/lib.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Brand {
+  id           String    @id @default(cuid())
+  name         String
+  website      String    @default("")
+  instagramUrl String    @default("")
+  toneOfVoice  String    @default("")
+  competitors  String    @default("")
+  restrictions String    @default("")
+  researchNotes String   @default("")
+  isDemo       Boolean   @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  products        Product[]
+  researchSources ResearchSource[]
+  campaigns       Campaign[]
+  activities      ActivityLog[]
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  brandId        String
+  name           String   @default("")
+  category       String   @default("")
+  description    String   @default("")
+  targetAudience String   @default("")
+  painPoints     String   @default("")
+  desires        String   @default("")
+  features       String   @default("")
+  benefits       String   @default("")
+  usp            String   @default("")
+  testimonials   String   @default("")
+  objections     String   @default("")
+  pricing        String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  brand     Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@index([brandId])
+}
+
+/// A single research item. `status` separates verified facts from hypotheses.
+model ResearchSource {
+  id         String   @id @default(cuid())
+  brandId    String
+  title      String
+  url        String   @default("")
+  kind       String   @default("note") // note | url | document | review | claim
+  category   String   @default("general") // general | benefit | pain_point | desire | objection | testimonial | claim | competitor | pricing
+  content    String   @default("")
+  status     String   @default("unreviewed") // verified | hypothesis | unreviewed
+  flags      String   @default("[]") // JSON string[] e.g. possible prompt injection
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+}
+
+model Campaign {
+  id         String    @id @default(cuid())
+  brandId    String
+  productId  String?
+  name       String
+  type       String // welcome | abandoned_cart | post_purchase | product_launch | promotional | win_back | educational | re_engagement
+  audience   String    @default("")
+  goal       String    @default("")
+  tone       String    @default("")
+  emailCount Int       @default(3)
+  status     String    @default("planning") // planning | drafting | review | completed
+  brief      String    @default("{}") // JSON CampaignBrief
+  isDemo     Boolean   @default(false)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  brand   Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  emails  CampaignEmail[]
+
+  @@index([brandId])
+}
+
+/// Working copy of one email in a sequence. Snapshots live in EmailDraftVersion.
+model CampaignEmail {
+  id                String   @id @default(cuid())
+  campaignId        String
+  position          Int
+  role              String   @default("")
+  objective         String   @default("")
+  framework         String   @default("")
+  segment           String   @default("")
+  subjectLines      String   @default("[]") // JSON string[]
+  selectedSubject   Int      @default(0)
+  previewText       String   @default("")
+  hook              String   @default("")
+  body              String   @default("")
+  cta               String   @default("")
+  rationale         String   @default("")
+  researchRefs      String   @default("[]") // JSON string[]
+  contentOrigin     String   @default("empty") // empty | manual | template | ai | ai_edited
+  status            String   @default("draft") // draft | in_review | approved
+  approvedVersionId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  campaign Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  versions EmailDraftVersion[]
+  analyses CopywritingAnalysis[]
+
+  @@unique([campaignId, position])
+}
+
+model EmailDraftVersion {
+  id              String   @id @default(cuid())
+  emailId         String
+  versionNumber   Int
+  subjectLines    String   @default("[]")
+  selectedSubject Int      @default(0)
+  previewText     String   @default("")
+  hook            String   @default("")
+  body            String   @default("")
+  cta             String   @default("")
+  rationale       String   @default("")
+  researchRefs    String   @default("[]")
+  origin          String   @default("manual") // manual | template | ai | ai_edited | restored | approved
+  label           String   @default("")
+  aiModel         String   @default("")
+  createdAt       DateTime @default(now())
+
+  email CampaignEmail @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@unique([emailId, versionNumber])
+}
+
+model CopywritingAnalysis {
+  id           String   @id @default(cuid())
+  emailId      String?
+  totalScore   Int
+  breakdown    String // JSON CategoryScore[]
+  flags        String // JSON Flag[]
+  improvements String // JSON string[]
+  method       String   @default("heuristic")
+  createdAt    DateTime @default(now())
+
+  email CampaignEmail? @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@index([emailId])
+}
+
+model Template {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  category        String
+  goal            String
+  framework       String
+  outline         String   @default("[]") // JSON string[]
+  subjectLines    String   @default("[]")
+  previewText     String   @default("")
+  hook            String   @default("")
+  body            String   @default("")
+  cta             String   @default("")
+  personalization String   @default("")
+  isBuiltIn       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  type       String
+  message    String
+  entityType String   @default("")
+  entityId   String   @default("")
+  brandId    String?
+  createdAt  DateTime @default(now())
+
+  brand Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
