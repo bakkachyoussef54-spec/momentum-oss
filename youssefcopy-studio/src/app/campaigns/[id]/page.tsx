@@ -7,11 +7,13 @@ import { WorkflowBar } from "@/components/workflow/workflow-bar";
 import { getWorkflow } from "@/lib/services/workflow";
 import { archiveCampaignAction, deleteCampaignAction } from "@/app/actions";
 import { getCampaign, parseBrief } from "@/lib/services/campaigns";
+import { ensureEmailMeta } from "@/lib/services/emails";
 import { CAMPAIGN_TYPE_LABELS, type CampaignType } from "@/lib/constants";
 import { parseStringArray } from "@/lib/json";
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await ensureEmailMeta(id);
   const c = await getCampaign(id);
   if (!c) notFound();
   const brief = parseBrief(c.brief);

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { EmailEditor } from "@/components/editor/email-editor";
-import { getEmail } from "@/lib/services/emails";
+import { ensureEmailMeta, getEmail } from "@/lib/services/emails";
+import { db } from "@/lib/db";
 import { emailContentOf, toBrandProfile, toResearchItem } from "@/lib/services/mappers";
 import { listTemplates } from "@/lib/services/templates";
 import { getAiStatus } from "@/lib/services/settings";
@@ -11,6 +12,8 @@ import { WorkflowBar } from "@/components/workflow/workflow-bar";
 
 export default async function EditorPage({ params }: { params: Promise<{ emailId: string }> }) {
   const { emailId } = await params;
+  const owner = await db.campaignEmail.findUnique({ where: { id: emailId }, select: { campaignId: true } });
+  if (owner) await ensureEmailMeta(owner.campaignId);
   const [email, templates, ai] = await Promise.all([getEmail(emailId), listTemplates(), getAiStatus()]);
   if (!email) notFound();
   const c = email.campaign;
