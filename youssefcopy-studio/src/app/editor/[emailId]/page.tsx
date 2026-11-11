@@ -4,7 +4,7 @@ import { ensureEmailMeta, getEmail } from "@/lib/services/emails";
 import { db } from "@/lib/db";
 import { emailContentOf, toBrandProfile, toResearchItem } from "@/lib/services/mappers";
 import { listTemplates } from "@/lib/services/templates";
-import { getAiStatus } from "@/lib/services/settings";
+import { getAiSettings, getAiStatus } from "@/lib/services/settings";
 import { parseStringArray } from "@/lib/json";
 import { parseBrief } from "@/lib/services/campaigns";
 import { getWorkflow } from "@/lib/services/workflow";
@@ -14,7 +14,7 @@ export default async function EditorPage({ params }: { params: Promise<{ emailId
   const { emailId } = await params;
   const owner = await db.campaignEmail.findUnique({ where: { id: emailId }, select: { campaignId: true } });
   if (owner) await ensureEmailMeta(owner.campaignId);
-  const [email, templates, ai] = await Promise.all([getEmail(emailId), listTemplates(), getAiStatus()]);
+  const [email, templates, ai, aiSettings] = await Promise.all([getEmail(emailId), listTemplates(), getAiStatus(), getAiSettings()]);
   if (!email) notFound();
   const c = email.campaign;
   const plan = parseBrief(c.brief)?.emails.find((b) => b.position === email.position) ?? null;
@@ -38,7 +38,7 @@ export default async function EditorPage({ params }: { params: Promise<{ emailId
         contentOrigin: email.contentOrigin,
         content: emailContentOf(email),
       }}
-      campaign={{ id: c.id, name: c.name, goal: c.goal, audience: c.audience, tone: c.tone }}
+      campaign={{ id: c.id, brandId: c.brandId, name: c.name, goal: c.goal, audience: c.audience, tone: c.tone }}
       sequence={c.emails}
       versions={email.versions.map((v) => ({
         id: v.id,
@@ -52,7 +52,8 @@ export default async function EditorPage({ params }: { params: Promise<{ emailId
       brand={toBrandProfile(c.brand)}
       research={c.brand.researchSources.map(toResearchItem)}
       templates={templates.map((t) => ({ id: t.id, name: t.name, category: t.category, framework: t.framework }))}
-      ai={{ available: ai.available, reason: ai.reason, model: ai.model }}
+      ai={{ available: ai.available, reason: ai.reason, model: ai.model, providerLabel: ai.providerLabel, isLocal: ai.isLocal }}
+      aiDefaults={{ tone: aiSettings.tone, length: aiSettings.length, framework: aiSettings.framework, temperature: aiSettings.temperature }}
       plan={plan}
     />
     </>

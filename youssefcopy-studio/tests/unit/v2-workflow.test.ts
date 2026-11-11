@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildStructuredBrief, classifyLine } from "@/lib/research/structured-brief";
-import { composeBody, STEP_GUIDES, stepComplete, suggestionsFor, WRITING_STEPS } from "@/lib/writing/assist";
+import { benefitOptions, composeBody, FRAMEWORK_PARTS, painOptions, STEP_GUIDES, stepComplete, suggestionsFor, WRITING_STEPS } from "@/lib/writing/assist";
+import { FRAMEWORKS } from "@/lib/constants";
+import { EMPTY_SECTIONS } from "@/lib/validation";
 import { buildCampaignBrief } from "@/lib/strategy/playbooks";
 import { analyzeEmail } from "@/lib/analyzer";
 import { computeWorkflow, emailPackageChecks } from "@/lib/workflow/steps";
@@ -44,22 +46,25 @@ describe("guided writer assist (rule-based)", () => {
   const brand = sleepMaskBrand();
   const brief = buildCampaignBrief({ type: "welcome", emailCount: 3, audience: "a", goal: "g", tone: "t", brand, research: verifiedResearch });
 
-  it("covers the eight steps with original guidance", () => {
-    expect(WRITING_STEPS).toEqual(["subject", "preview", "hook", "problem", "benefit", "transition", "cta", "rationale"]);
+  it("covers the twelve Human Mode steps with coaching, tips and exercises", () => {
+    expect(WRITING_STEPS).toEqual(["objective", "audience", "pain", "verified_benefit", "framework", "subject", "preview", "hook", "body", "cta", "rationale", "review"]);
     for (const s of WRITING_STEPS) {
-      expect(STEP_GUIDES[s].structures.length).toBeGreaterThan(0);
-      expect(STEP_GUIDES[s].avoid.length).toBeGreaterThan(0);
+      expect(STEP_GUIDES[s].why.length, s).toBeGreaterThan(40);
+      expect(STEP_GUIDES[s].exercise, s).toBeTruthy();
+      expect(STEP_GUIDES[s].avoid.length, s).toBeGreaterThan(0);
     }
+    for (const f of FRAMEWORKS) expect(FRAMEWORK_PARTS[f].outline).toContain("→");
   });
 
   it("assembles suggestions only from verified inputs, with no invented numbers or claims", () => {
+    const withSuggestions = [...WRITING_STEPS.filter((s) => !["pain", "verified_benefit", "framework", "review"].includes(s)), "problem", "benefit", "transition"] as const;
     for (const plan of brief.emails) {
-      for (const step of WRITING_STEPS) {
+      for (const step of withSuggestions) {
         const s = suggestionsFor(step, { brand, research: verifiedResearch, plan });
         expect(s.length, `${step} for email ${plan.position}`).toBeGreaterThan(0);
         for (const { text, basis } of s) {
           expect(basis).toBeTruthy();
-          for (const n of text.match(/\d+/g) ?? []) expect(brand.product.pricing).toContain(n);
+          for (const n of text.match(/\d+/g) ?? []) expect(brand.product.pricing + plan.segment).toContain(n);
           expect(findHealthClaims(text)).toEqual([]);
           expect(text).not.toMatch(/\bAI\b/);
         }
@@ -71,6 +76,15 @@ describe("guided writer assist (rule-based)", () => {
     expect(benefit[0].text).toBe("The Nocturne Contour Mask blocks light without pressure on the eyes.");
   });
 
+  it("uses the pain point and benefit the writer chose", () => {
+    const ctx = { brand, research: verifiedResearch, plan: brief.emails[0], chosen: { pain: "Flat masks press on the eyes", benefit: "Stays in place for side sleepers" } };
+    expect(suggestionsFor("hook", ctx)[0].text).toBe("If flat masks press on the eyes sounds familiar, you're not alone.");
+    expect(suggestionsFor("benefit", ctx)[0].text).toBe("The Nocturne Contour Mask stays in place for side sleepers.");
+    expect(painOptions(brand, verifiedResearch)).toEqual(["Waking up at sunrise", "Flat masks press on the eyes"]);
+    expect(benefitOptions(brand, verifiedResearch)).toContain("Molded eye cups leave space for eyelashes.");
+    expect(benefitOptions(brand, verifiedResearch)).not.toContain("Side sleepers say masks shift.");
+  });
+
   it("uses visible placeholders when inputs are missing", () => {
     const empty = { ...brand, product: { ...EMPTY_PRODUCT, name: "Mask" } };
     const s = suggestionsFor("benefit", { brand: empty, research: [], plan: null });
@@ -79,13 +93,19 @@ describe("guided writer assist (rule-based)", () => {
   });
 
   it("composes the body and tracks step completion", () => {
-    const sections = { problem: "P.", benefit: "B.", transition: "" };
+    const sections = { ...EMPTY_SECTIONS, problem: "P.", benefit: "B.", painPoint: "Pain" };
     expect(composeBody(sections)).toBe("P.\n\nB.");
-    const c = { subjectLines: ["a", "b", ""], selectedSubject: 0, previewText: "x", hook: "", cta: "", rationale: "", sections };
+    const c = { subjectLines: ["a", "b", ""], selectedSubject: 0, previewText: "x", hook: "", body: "P.\n\nB.", cta: "", rationale: "", sections, objective: "o", segment: "", framework: "PAS", status: "draft" };
     expect(stepComplete("subject", c)).toBe(false);
     expect(stepComplete("subject", { ...c, subjectLines: ["a", "b", "c"] })).toBe(true);
-    expect(stepComplete("benefit", c)).toBe(true);
-    expect(stepComplete("transition", c)).toBe(false);
+    expect(stepComplete("objective", c)).toBe(true);
+    expect(stepComplete("audience", c)).toBe(false);
+    expect(stepComplete("pain", c)).toBe(true);
+    expect(stepComplete("verified_benefit", c)).toBe(false);
+    expect(stepComplete("framework", c)).toBe(true);
+    expect(stepComplete("body", c)).toBe(true);
+    expect(stepComplete("review", c)).toBe(false);
+    expect(stepComplete("review", { ...c, status: "approved" })).toBe(true);
   });
 
   it("labels origins honestly", () => {

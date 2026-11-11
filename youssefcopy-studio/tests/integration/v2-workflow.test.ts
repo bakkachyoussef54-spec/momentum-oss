@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { resetTestDb } from "./reset";
 import { db } from "@/lib/db";
 import { addResearch, createBrand } from "@/lib/services/brands";
 import { getCampaign, parseBrief, planCampaignFromBrand } from "@/lib/services/campaigns";
@@ -13,8 +14,10 @@ import { toMarkdown, toPlainText } from "@/lib/export/package";
 import { composeBody, suggestionsFor } from "@/lib/writing/assist";
 import { emailContentOf, toBrandProfile, toResearchItem } from "@/lib/services/mappers";
 import { DEMO_BRAND } from "@/lib/services/demo";
+import { EMPTY_SECTIONS } from "@/lib/validation";
 
 describe("V2 three-email workflow without an API key", () => {
+  beforeAll(resetTestDb);
   it("plans, writes with the guided assist, approves, and exports a complete package", async () => {
     const brand = await createBrand({ ...DEMO_BRAND, name: "Hushwell (V2 test)" });
     await addResearch({ brandId: brand.id, title: "Spec sheet", url: "https://example.com/spec", kind: "url", category: "benefit", content: "Molded eye cups leave space for eyelashes.", status: "verified" });
@@ -37,7 +40,7 @@ describe("V2 three-email workflow without an API key", () => {
     for (const e of campaign.emails) {
       const plan = brief.emails.find((b) => b.position === e.position)!;
       const pick = (step: Parameters<typeof suggestionsFor>[0]) => suggestionsFor(step, { brand: profile, research, plan }).map((s) => s.text);
-      const sections = { problem: pick("problem")[0], benefit: pick("benefit")[0], transition: pick("transition")[0] };
+      const sections = { ...EMPTY_SECTIONS, problem: pick("problem")[0], benefit: pick("benefit")[0], transition: pick("transition")[0], painPoint: "Early sunrise wakes them up" };
       const subjects = [...pick("subject"), "Backup subject one", "Backup subject two"].slice(0, 3);
       await saveDraft(
         e.id,
@@ -86,8 +89,9 @@ describe("V2 three-email workflow without an API key", () => {
     ]);
 
     // Restoring an earlier version brings its sections back
-    await saveDraft(first, { ...emailContentOf((await getEmail(first))!), sections: { problem: "changed", benefit: "", transition: "" }, body: "changed" });
-    await restoreVersion(first, v.id);
+    await saveDraft(first, { ...emailContentOf((await getEmail(first))!), sections: { ...EMPTY_SECTIONS, problem: "changed" }, body: "changed" });
+    await expect(restoreVersion(first, v.id)).rejects.toThrow(/approved/);
+    await restoreVersion(first, v.id, { confirmApproved: true });
     expect(emailContentOf((await getEmail(first))!).sections.problem).not.toBe("changed");
   });
 
